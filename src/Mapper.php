@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (C) 2015 
+ * Copyright (C) 2015
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,6 +57,7 @@ class Mapper {
                 'number-of-pages' => 'number-of-pages',
                 'issue' => 'issue',
                 'chapter-number' => 'chapter-number',
+                'collection-number' => 'collection-number',
                 'medium' => 'medium',
                 'status' => 'status',
                 'edition' => 'edition',
