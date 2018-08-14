@@ -178,7 +178,7 @@ class Layout implements Rendering
      */
     private function htmlentities($text)
     {
-        $text = preg_replace("/(.*)&([^#38;|amp;|lt;].*)/u", "$1&#38;$2", $text);
+        $text = preg_replace("/(.*)&([^#38;|amp;|lt;|gt;].*)/u", "$1&#38;$2", $text);
         return $text;
     }
 
