@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -10,11 +10,16 @@
 namespace Seboettg\CiteProc\Rendering;
 
 use Seboettg\CiteProc\CiteProc;
-use Seboettg\CiteProc\Rendering\RenderingInterface;
+use Seboettg\CiteProc\Context;
+use Seboettg\CiteProc\Data\DataList;
+use Seboettg\CiteProc\RenderingState;
 use Seboettg\CiteProc\Styles\AffixesTrait;
+use Seboettg\CiteProc\Styles\ConsecutivePunctuationCharacterTrait;
 use Seboettg\CiteProc\Styles\FormattingTrait;
 use Seboettg\CiteProc\Styles\DelimiterTrait;
+use Seboettg\CiteProc\Util\CiteProcHelper;
 use Seboettg\CiteProc\Util\Factory;
+use Seboettg\CiteProc\Util\StringHelper;
 use Seboettg\Collection\ArrayList;
 
 
@@ -24,14 +29,15 @@ use Seboettg\Collection\ArrayList;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class Layout implements RenderingInterface
+class Layout implements Rendering
 {
 
     private static $numberOfCitedItems = 0;
 
     use AffixesTrait,
         FormattingTrait,
-        DelimiterTrait;
+        DelimiterTrait,
+        ConsecutivePunctuationCharacterTrait;
 
     /**
      * @var ArrayList
@@ -45,67 +51,104 @@ class Layout implements RenderingInterface
      */
     private $delimiter = "";
 
-    public function __construct($node)
+
+    private $parent;
+
+    /**
+     * @param \Seboettg\CiteProc\Style\StyleElement $parent
+     */
+    public function __construct($node, $parent)
     {
+        $this->parent = $parent;
         self::$numberOfCitedItems = 0;
         $this->children = new ArrayList();
         foreach ($node->children() as $child) {
-            $this->children->append(Factory::create($child));
+            $this->children->append(Factory::create($child, $this));
         }
         $this->initDelimiterAttributes($node);
         $this->initAffixesAttributes($node);
         $this->initFormattingAttributes($node);
     }
 
-    public function render($data)
+    /**
+     * @param array|DataList $data
+     * @param array|ArrayList $citationItems
+     * @return string|array
+     */
+    public function render($data, $citationItems = [])
     {
         $ret = "";
         $sorting = CiteProc::getContext()->getSorting();
         if (!empty($sorting)) {
+            CiteProc::getContext()->setRenderingState(new RenderingState("sorting"));
             $sorting->sort($data);
+            CiteProc::getContext()->setRenderingState(new RenderingState("rendering"));
         }
 
         if (CiteProc::getContext()->isModeBibliography()) {
-            if (is_array($data)) {
-                $arr = [];
-                foreach ($data as $item) {
-                    ++self::$numberOfCitedItems;
-                    $arr[] = $this->wrapBibEntry($this->renderSingle($item));
-                }
-                $ret .= implode($this->delimiter, $arr);
-            } else {
-                $ret .= $this->wrapBibEntry($this->renderSingle($data));
+            foreach ($data as $citationNumber => $item) {
+                ++self::$numberOfCitedItems;
+                CiteProc::getContext()->getResults()->append($this->wrapBibEntry($item, $this->renderSingle($item, $citationNumber)));
             }
-
-            return "<div class=\"csl-bib-body\">".$ret."\n</div>";
+            $ret .= implode($this->delimiter, CiteProc::getContext()->getResults()->toArray());
+            $ret = StringHelper::clearApostrophes($ret);
+            return "<div class=\"csl-bib-body\">" . $ret . "\n</div>";
 
         } else if (CiteProc::getContext()->isModeCitation()) {
-            if (is_array($data)) {
-                $arr = [];
-                foreach ($data as $item) {
-                    if (CiteProc::getContext()->hasCitationItems()) {
-                        continue;
-                    }
-                    $arr[] = $this->renderSingle($item);
+            if ($citationItems->count() > 0) { //is there a filter for specific citations?
+                if ($this->isGroupedCitations($citationItems)) { //if citation items grouped?
+                    return $this->renderGroupedCitations($data, $citationItems);
+                } else {
+                    $data = $this->filterCitationItems($data, $citationItems);
+                    $ret = $this->renderCitations($data, $ret);
                 }
-                $ret .= implode($this->delimiter, $arr);
+
             } else {
-                $ret .= $this->renderSingle($data);
+                $ret = $this->renderCitations($data, $ret);
             }
         }
-
+        $ret = StringHelper::clearApostrophes($ret);
         return $this->addAffixes($ret);
     }
 
-    private function renderSingle($data)
+    /**
+     * @param $data
+     * @param int|null $citationNumber
+     * @return string
+     */
+    private function renderSingle($data, $citationNumber = null)
     {
-        $ret = "";
-        /** @var RenderingInterface $child */
-        foreach ($this->children as $child) {
-            $ret .= $child->render($data);
+
+        $bibliographyOptions = CiteProc::getContext()->getBibliographySpecificOptions();
+        $inMargin = [];
+        $margin = [];
+        foreach ($this->children as $key => $child) {
+            $rendered = $child->render($data, $citationNumber);
+            $this->getChildsAffixesAndDelimiter($child);
+            if (CiteProc::getContext()->isModeBibliography() && $bibliographyOptions->getSecondFieldAlign() === "flush") {
+
+                if ($key === 0 && !empty($rendered)) {
+                    $inMargin[] = $rendered;
+                } else {
+                    $margin[] = $rendered;
+                }
+            } else {
+                $inMargin[] = $rendered;
+            }
         }
 
-        return $this->format($ret);
+
+        if (!empty($inMargin) && !empty($margin) && CiteProc::getContext()->isModeBibliography()) {
+            $leftMargin = $this->removeConsecutiveChars($this->htmlentities($this->format(implode("", $inMargin))));
+            $rightInline = $this->removeConsecutiveChars($this->htmlentities($this->format(implode("", $margin))) . $this->suffix);
+            $res  = '<div class="csl-left-margin">' . $leftMargin . '</div>';
+            $res .= '<div class="csl-right-inline">' . $rightInline . '</div>';
+            return $res;
+        } else if (!empty($inMargin)) {
+            $res = $this->format(implode("", $inMargin));
+            return $this->htmlentities($this->removeConsecutiveChars($res));
+        }
+        return "";
     }
 
     /**
@@ -116,9 +159,97 @@ class Layout implements RenderingInterface
         return self::$numberOfCitedItems;
     }
 
-    private function wrapBibEntry($value)
+    /**
+     * @param string $value
+     * @return string
+     */
+    private function wrapBibEntry($dataItem, $value)
     {
-        return "\n  <div class=\"csl-entry\">" . $value . "</div>";
+        $value = $this->addAffixes($value);
+        return "\n  " .
+            "<div class=\"csl-entry\">" .
+            $renderedItem = CiteProcHelper::applyAdditionMarkupFunction($dataItem, "csl-entry", $value) .
+            "</div>";
+    }
+
+    /**
+     * @param string $text
+     * @return string
+     */
+    private function htmlentities($text)
+    {
+        $text = preg_replace("/(.*)&([^#38;|amp;].*)/u", "$1&#38;$2", $text);
+        return $text;
+    }
+
+    /**
+     * @param $data
+     * @param $ret
+     * @return string
+     */
+    private function renderCitations($data, $ret)
+    {
+        CiteProc::getContext()->getResults()->replace([]);
+        foreach ($data as $citationNumber => $item) {
+            $renderedItem = $this->renderSingle($item, $citationNumber);
+            $renderedItem = CiteProcHelper::applyAdditionMarkupFunction($item, "csl-entry", $renderedItem);
+            CiteProc::getContext()->getResults()->append($renderedItem);
+        }
+        $ret .= implode($this->delimiter, CiteProc::getContext()->getResults()->toArray());
+        return $ret;
+    }
+
+    /**
+     * @param DataList $data
+     * @param ArrayList $citationItems
+     * @return mixed
+     */
+    private function filterCitationItems($data, $citationItems)
+    {
+        $arr = $data->toArray();
+
+        $arr_ = array_filter($arr, function($dataItem) use ($citationItems) {
+            foreach ($citationItems as $citationItem) {
+                if ($dataItem->id === $citationItem->id) {
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        return $data->replace($arr_);
+    }
+
+    /**
+     * @param ArrayList $citationItems
+     * @return bool
+     */
+    private function isGroupedCitations(ArrayList $citationItems)
+    {
+        $firstItem = array_values($citationItems->toArray())[0];
+        if (is_array($firstItem)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @param DataList $data
+     * @param ArrayList $citationItems
+     * @return array|string
+     */
+    private function renderGroupedCitations($data, $citationItems)
+    {
+        $group = [];
+        foreach ($citationItems as $citationItemGroup) {
+            $data_ = $this->filterCitationItems(clone $data, $citationItemGroup);
+            CiteProc::getContext()->setCitationItems($data_);
+            $group[] = $this->addAffixes(StringHelper::clearApostrophes($this->renderCitations($data_, "")));
+        }
+        if (CiteProc::getContext()->isCitationsAsArray()) {
+            return $group;
+        }
+        return implode("\n", $group);
     }
 
 }

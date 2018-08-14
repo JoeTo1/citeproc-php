@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -13,7 +13,7 @@ use Seboettg\CiteProc\Exception\ClassNotFoundException;
 
 /**
  * Class Factory
- * @package Seboettg\CiteProc\Choose\Constraint
+ * @package Seboettg\CiteProc\Constraint
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
@@ -25,11 +25,10 @@ class Factory extends \Seboettg\CiteProc\Util\Factory
     /**
      * @param string $name
      * @param string $value
-     * @param string $match
      * @return mixed
      * @throws ClassNotFoundException
      */
-    public static function createConstraint($name, $value, $match)
+    public static function createConstraint($name, $value)
     {
         $className = "";
         $parts = explode("-", $name);
@@ -41,6 +40,6 @@ class Factory extends \Seboettg\CiteProc\Util\Factory
         if (!class_exists($className)) {
             throw new ClassNotFoundException($className);
         }
-        return new $className($value, $match);
+        return new $className($value);
     }
 }

@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -8,10 +8,10 @@
  */
 
 namespace Seboettg\CiteProc\Constraint;
+
 use NumberFormatter;
 use Seboettg\CiteProc\CiteProc;
-use Seboettg\CiteProc\Context;
-use Seboettg\CiteProc\Util\Number;
+use Seboettg\CiteProc\Util\NumberHelper;
 
 
 /**
@@ -25,15 +25,17 @@ class IsNumeric implements ConstraintInterface
 
     private $isNumeric;
 
-    private $match;
-
-    public function __construct($value, $match)
+    public function __construct($value)
     {
         $this->isNumeric = $value;
-        $this->match = $match;
     }
 
-    public function validate($value)
+    /**
+     * @param $value
+     * @param int|null $citationNumber
+     * @return bool
+     */
+    public function validate($value, $citationNumber = null)
     {
         if (isset($value->{$this->isNumeric})) {
             return $this->parseValue($value->{$this->isNumeric});
@@ -55,12 +57,12 @@ class IsNumeric implements ConstraintInterface
     {
         if (is_numeric($evalValue)) {
             return true;
-        } else if (preg_match(Number::PATTERN_ORDINAL, $evalValue)) {
+        } else if (preg_match(NumberHelper::PATTERN_ORDINAL, $evalValue)) {
             $numberFormatter = new NumberFormatter(CiteProc::getContext()->getLocale()->getLanguage(), NumberFormatter::ORDINAL);
             return $numberFormatter->parse($evalValue) !== false;
-        } else if (preg_match(Number::PATTERN_ROMAN, $evalValue)) {
-            return Number::roman2Dec($evalValue) !== false;
-        } else if (preg_match(Number::PATTERN_COMMA_AMPERSAND_RANGE, $evalValue)){
+        } else if (preg_match(NumberHelper::PATTERN_ROMAN, $evalValue)) {
+            return NumberHelper::roman2Dec($evalValue) !== false;
+        } else if (preg_match(NumberHelper::PATTERN_COMMA_AMPERSAND_RANGE, $evalValue)) {
             return true;
         }
         return false;

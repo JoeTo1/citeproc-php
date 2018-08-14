@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -9,14 +9,13 @@
 
 namespace Seboettg\CiteProc\Rendering;
 
-
-use PHPUnit_Framework_ExpectationFailedException;
+use PHPUnit\Framework\TestCase;
 use Seboettg\CiteProc\CiteProc;
 use Seboettg\CiteProc\Context;
 use Seboettg\CiteProc\Locale\Locale;
 use Seboettg\CiteProc\TestSuiteTestCaseTrait;
 
-class GroupTest extends \PHPUnit_Framework_TestCase
+class GroupTest extends TestCase
 {
     use TestSuiteTestCaseTrait;
 
@@ -33,26 +32,52 @@ class GroupTest extends \PHPUnit_Framework_TestCase
     public function testRenderDelimiter()
     {
         $str = '<group delimiter=" "><text term="retrieved"/><text term="from"/><text variable="URL"/></group>';
-        $group = new Group(new \SimpleXMLElement($str));
+        $group = new Group(new \SimpleXMLElement($str), null);
         $this->assertEquals("abgerufen von http://foo.bar", $group->render(json_decode($this->data)));
     }
 
     public function testRenderAffixes()
     {
         $str = '<group prefix="[" suffix="]" delimiter=" "><text term="retrieved"/><text term="from"/><text variable="URL"/></group>';
-        $group = new Group(new \SimpleXMLElement($str));
+        $group = new Group(new \SimpleXMLElement($str), null);
         $this->assertEquals("[abgerufen von http://foo.bar]", $group->render(json_decode($this->data)));
     }
 
     public function testRenderDisplay()
     {
         $str = '<group display="indent" prefix="[" suffix="]" delimiter=" "><text term="retrieved"/><text term="from"/><text variable="URL"/></group>';
-        $group = new Group(new \SimpleXMLElement($str));
-        $this->assertEquals("<div style=\"text-indent: 0px; padding-left: 45px;\">[abgerufen von http://foo.bar]</div>", $group->render(json_decode($this->data)));
+        $group = new Group(new \SimpleXMLElement($str), null);
+        $this->assertEquals("<div class=\"csl-indent\">[abgerufen von http://foo.bar]</div>", $group->render(json_decode($this->data)));
     }
 
-    public function testRenderTestSuite()
+
+    public function testGroupComplexNesting()
     {
-        $this->_testRenderTestSuite("group_");
+        $this->_testRenderTestSuite("group_ComplexNesting");
     }
+
+    public function testGroupShortOutputOnly()
+    {
+        $this->_testRenderTestSuite("group_ShortOutputOnly");
+    }
+
+    /*
+    public function testSuppressTermWhenNoOutputFromPartialDate()
+    {
+        //TODO: implement
+        //$this->_testRenderTestSuite("group_SuppressTermWhenNoOutputFromPartialDate");
+    }
+
+    public function testGroupSuppressValueWithEmptySubgroup()
+    {
+        //TODO: implement
+        //$this->_testRenderTestSuite("group_SuppressValueWithEmptySubgroup");
+    }
+
+    public function testGroupSuppressWithEmptyNestedDateNode()
+    {
+        //TODO: implement
+        //$this->_testRenderTestSuite("group_SuppressWithEmptyNestedDateNode");
+    }*/
+
 }

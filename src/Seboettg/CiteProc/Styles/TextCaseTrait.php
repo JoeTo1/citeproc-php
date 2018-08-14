@@ -37,6 +37,11 @@ trait TextCaseTrait
         }
     }
 
+    /**
+     * @param string $text
+     * @param string $lang
+     * @return string
+     */
     public function applyTextCase($text, $lang = "en")
     {
 
@@ -48,7 +53,12 @@ trait TextCaseTrait
                 $text = $this->keepNoCase(mb_strtolower($text), $text);
                 break;
             case 'sentence':
-                $text = $this->keepNoCase(mb_substr($text, 0, 1) . mb_strtolower(mb_substr($text, 1)), $text);
+                if (StringHelper::checkUpperCaseString($text)) {
+                    $text = mb_strtolower($text);
+                    return StringHelper::mb_ucfirst($text);
+                } else {
+                    return StringHelper::mb_ucfirst($text);
+                }
                 break;
             case 'capitalize-all':
                 $text = $this->keepNoCase(StringHelper::capitalizeAll($text), $text);
@@ -69,6 +79,10 @@ trait TextCaseTrait
     }
 
 
+    /**
+     * @param string $render
+     * @param string $original
+     */
     private function keepNoCase($render, $original)
     {
         if (preg_match('/<span class=\"nocase\">(\p{L}+)<\/span>/i', $original, $match)) {

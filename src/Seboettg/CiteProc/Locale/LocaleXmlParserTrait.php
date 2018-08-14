@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -9,9 +9,13 @@
 
 namespace Seboettg\CiteProc\Locale;
 
-
 use Seboettg\Collection\ArrayList;
 
+/**
+ * Trait LocaleXmlParserTrait
+ * @package Seboettg\CiteProc\Locale
+ * @author Sebastian Böttger <seboettg@gmail.com>
+ */
 trait LocaleXmlParserTrait
 {
 
@@ -45,6 +49,9 @@ trait LocaleXmlParserTrait
      */
     private $termsXml;
 
+    /**
+     * init parser
+     */
     protected function initLocaleXmlParser()
     {
         $this->options = new ArrayList();
@@ -56,10 +63,14 @@ trait LocaleXmlParserTrait
 
     }
 
+    /**
+     * @param \SimpleXMLElement $locale
+     */
     private function parseXml(\SimpleXMLElement $locale)
     {
+        /** @var \SimpleXMLElement $node */
         foreach ($locale as $node) {
-            switch($node->getName()) {
+            switch ($node->getName()) {
                 case 'style-options':
                     $this->optionsXml->add('options', $node);
                     foreach ($node->attributes() as $name => $value) {
@@ -74,6 +85,8 @@ trait LocaleXmlParserTrait
                 case 'terms':
                     $this->termsXml->add('terms', $node);
                     $plural = ['single', 'multiple'];
+
+                    /** @var \SimpleXMLElement $child */
                     foreach ($node->children() as $child) {
                         $term = new Term();
 
@@ -84,6 +97,7 @@ trait LocaleXmlParserTrait
                         $subChildren = $child->children();
                         $count = $subChildren->count();
                         if ($count > 0) {
+                            /** @var \SimpleXMLElement $subChild */
                             foreach ($subChildren as $subChild) {
                                 $name = $subChild->getName();
                                 $value = (string) $subChild;
@@ -104,7 +118,8 @@ trait LocaleXmlParserTrait
                     }
                     break;
                 case 'date':
-                    $this->dateXml->add('date', $node);
+                    $form = (string) $node["form"];
+                    $this->dateXml->add($form, $node);
                     foreach ($node->children() as $child) {
                         $date = new \stdClass();
                         $name = "";
@@ -114,10 +129,10 @@ trait LocaleXmlParserTrait
                             }
                             $date->{$key} = (string) $value;
                         }
-                        if (!$this->terms->hasKey($name)) {
+                        if ($child->getName() !== "name-part" && !$this->terms->hasKey($name)) {
                             $this->terms->add($name, []);
                         }
-                        $this->date->add($name, $date);
+                        $this->date->add($form, $date);
                     }
 
                     break;
@@ -134,7 +149,9 @@ trait LocaleXmlParserTrait
         return array_pop($arr);
     }
 
-
+    /**
+     * @return array
+     */
     public function getDateXml()
     {
         return $this->dateXml->toArray();

@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -16,14 +16,20 @@ namespace Seboettg\CiteProc\Constraint;
  * identical citations. This attempt at disambiguation is only made when all other disambiguation methods have failed
  * to uniquely identify the target source.
  *
+ * @codeCoverageIgnore
+ *
  * @package Seboettg\CiteProc\Choose\Constraint
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
 class Disambiguate implements ConstraintInterface
 {
-
-    public function validate($value)
+    /**
+     * @param $value
+     * @param int|null $citationNumber
+     * @return bool
+     */
+    public function validate($value, $citationNumber = null)
     {
         return false;
     }

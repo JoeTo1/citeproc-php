@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -156,11 +156,11 @@ class Variables
      */
     public static function nameHash(\stdClass $data, $variable)
     {
-        if (!self::isNumberVariable($variable)) {
+        if (!self::isNameVariable($variable)) {
             throw new \InvalidArgumentException("\"$variable\" is not a valid name variable.");
         }
 
-        $names = new Names(new \SimpleXMLElement("<names variable=\"$variable\" delimiter=\"-\"><name form=\"long\" sort-separator=\",\" name-as-sort-order=\"all\"/></names>"));
+        $names = new Names(new \SimpleXMLElement("<names variable=\"$variable\" delimiter=\"-\"><name form=\"long\" sort-separator=\",\" name-as-sort-order=\"all\"/></names>"), null);
         return $names->render($data);
     }
 }

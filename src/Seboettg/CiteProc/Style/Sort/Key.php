@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -35,7 +35,7 @@ class Key implements SortKey
     private $variable;
 
     /**
-     * sorting order
+     * the sort direction can be set to either “ascending” (default) or “descending” with the sort attribute
      * @var string
      */
     private $sort = "ascending";
@@ -45,6 +45,12 @@ class Key implements SortKey
      * @var string
      */
     private $macro;
+
+    /**
+     * only relevant for date ranges
+     * @var int
+     */
+    private $rangePart = 1;
 
     /**
      * Key constructor.
@@ -93,6 +99,14 @@ class Key implements SortKey
     }
 
     /**
+     * @return string
+     */
+    public function getMacro()
+    {
+        return $this->macro;
+    }
+
+    /**
      * @return bool
      */
     public function isNameVariable()
@@ -122,5 +136,21 @@ class Key implements SortKey
     public function isMacro()
     {
         return $this->variable === "macro" && !empty(CiteProc::getContext()->getMacro($this->macro));
+    }
+
+    /**
+     * @param $rangePart
+     */
+    public function setRangePart($rangePart)
+    {
+        $this->rangePart = $rangePart;
+    }
+
+    /**
+     * @return int
+     */
+    public function getRangePart()
+    {
+        return $this->rangePart;
     }
 }

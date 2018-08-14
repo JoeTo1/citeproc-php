@@ -8,7 +8,7 @@
  */
 
 namespace Seboettg\CiteProc\Rendering\Choose;
-use Seboettg\CiteProc\Rendering\RenderingInterface;
+use Seboettg\CiteProc\Rendering\Rendering;
 
 
 /**
@@ -17,15 +17,7 @@ use Seboettg\CiteProc\Rendering\RenderingInterface;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class ChooseElse extends ChooseIf implements RenderingInterface
+class ChooseElse extends ChooseIf
 {
-    public function render($data)
-    {
-        $ret = "";
-        /** @var RenderingInterface $child */
-        foreach ($this->children as $child) {
-            $ret .= $child->render($data);
-        }
-        return $ret;
-    }
+    //render function is inherited from ChooseIf
 }

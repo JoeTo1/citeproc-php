@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -16,14 +16,20 @@ namespace Seboettg\CiteProc\Constraint;
  * Tests whether the locator matches the given locator types (see Locators). Use “sub-verbo” to test for the
  * “sub verbo” locator type.
  *
+ * @codeCoverageIgnore
+ *
  * @package Seboettg\CiteProc\Choose\Constraint
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
 class Locator implements ConstraintInterface
 {
-
-    public function validate($value)
+    /**
+     * @param $value
+     * @param int|null $citationNumber
+     * @return bool
+     */
+    public function validate($value, $citationNumber = null)
     {
         return false;
     }

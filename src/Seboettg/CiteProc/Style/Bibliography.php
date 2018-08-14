@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -8,10 +8,10 @@
  */
 
 namespace Seboettg\CiteProc\Style;
-use Seboettg\CiteProc\Rendering\Layout;
-use Seboettg\CiteProc\Rendering\RenderingInterface;
-use Seboettg\CiteProc\Style\Sort\Sort;
 
+use Seboettg\CiteProc\Data\DataList;
+use Seboettg\CiteProc\Style\Options\BibliographyOptions;
+use Seboettg\CiteProc\CiteProc;
 
 /**
  * Class Bibliography
@@ -27,12 +27,45 @@ use Seboettg\CiteProc\Style\Sort\Sort;
  */
 class Bibliography extends StyleElement
 {
+    private $node;
+
     /**
      * Bibliography constructor.
      * @param \SimpleXMLElement $node
+     * @param Root $parent
      */
-    public function __construct(\SimpleXMLElement $node)
+    public function __construct(\SimpleXMLElement $node, $parent)
     {
-        parent::__construct($node);
+        parent::__construct($node, $parent);
+        $this->node = $node;
+        $bibliographyOptions = new BibliographyOptions($node);
+        CiteProc::getContext()->setBibliographySpecificOptions($bibliographyOptions);
+        $this->initInheritableNameAttributes($node);
+    }
+
+    /**
+     * @param array|DataList $data
+     * @param int|null $citationNumber
+     * @return string
+     */
+    public function render($data, $citationNumber = null)
+    {
+        if (!$this->attributesInitialized) {
+            $this->initInheritableNameAttributes($this->node);
+        }
+        $subsequentAuthorSubstitute = CiteProc::getContext()
+            ->getBibliographySpecificOptions()
+            ->getSubsequentAuthorSubstitute();
+
+        $subsequentAuthorSubstituteRule = CiteProc::getContext()
+            ->getBibliographySpecificOptions()
+            ->getSubsequentAuthorSubstituteRule();
+
+        if ($subsequentAuthorSubstitute !== null && !empty($subsequentAuthorSubstituteRule)) {
+            CiteProc::getContext()->getCitationItems()->setSubsequentAuthorSubstitute($subsequentAuthorSubstitute);
+            CiteProc::getContext()->getCitationItems()->setSubsequentAuthorSubstituteRule($subsequentAuthorSubstituteRule);
+        }
+
+        return $this->layout->render($data, $citationNumber);
     }
 }

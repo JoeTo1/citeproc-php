@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -11,15 +11,32 @@ namespace Seboettg\CiteProc\Styles;
 
 use Seboettg\CiteProc\CiteProc;
 
+/**
+ * Trait AffixesTrait
+ * @package Seboettg\CiteProc\Styles
+ * @author Sebastian Böttger <seboettg@gmail.com>
+ */
 trait AffixesTrait
 {
 
+    /**
+     * @var string
+     */
     private $prefix = "";
 
+    /**
+     * @var string
+     */
     private $suffix = "";
 
-    private $quotes = false;
+    /**
+     * @var bool
+     */
+    private $quote = false;
 
+    /**
+     * @param \SimpleXMLElement $node
+     */
     protected function initAffixesAttributes(\SimpleXMLElement $node)
     {
         /** @var \SimpleXMLElement $attribute */
@@ -36,37 +53,58 @@ trait AffixesTrait
                     $this->suffix = $value;
                     break;
                 case 'quote':
-                    $this->quotes = (bool) $attribute;
+                    $this->quote = (bool) $attribute;
             }
         }
     }
 
+    /**
+     * @param $text
+     * @return string
+     */
     protected function addAffixes($text)
     {
-        if ($this->quotes) {
-            $openQuotes = CiteProc::getContext()->getLocale()->filter("terms", "open-quote")->single;
-            $closeQuote = CiteProc::getContext()->getLocale()->filter("terms", "close-quote")->sinlge;
-            $punctuationInQuote = CiteProc::getContext()->getLocale()->filter("terms", "punctuation-in-quote")->single;
-        }
-
-
         $prefix = $this->prefix;
-        $prefix .= isset($openQuotes) ? $openQuotes : '';
         $suffix = $this->suffix;
-        if (isset($closeQuote) && !empty($suffix) && isset($punctuationInQuote)) {
-            if (strpos($suffix, '.') !== false || strpos($suffix, ',') !== false) {
-                $suffix = $suffix . $closeQuote;
-            }
-        } elseif (isset($closeQuote)) {
-            $suffix = $closeQuote . $suffix;
-        }
+
         if (!empty($suffix)) { // guard against repeated suffixes...
             $no_tags = strip_tags($text);
             if (strlen($no_tags) && ($no_tags{(strlen($no_tags) - 1)} == $suffix{0})) {
                 $suffix = substr($suffix, 1);
             }
+
+            // punctuation in quote?
+            $piq = CiteProc::getContext()
+                ->getLocale()
+                ->filter('options', 'punctuation-in-quote');
+            $punctuationInQuote = is_array($piq) ? current($piq) : $piq;
+
+            if ($punctuationInQuote && in_array($suffix, [',', ';', '.'])) {
+                $closeQuote = CiteProc::getContext()->getLocale()->filter("terms", "close-quote")->single;
+                $lastChar = mb_substr($text, -1, 1);
+                if ($closeQuote === $lastChar) { // last char is closing quote?
+                    $text = mb_substr($text, 0, mb_strlen($text) - 1); //set suffix before
+                    return $text . $suffix . $lastChar;
+                }
+            }
         }
 
         return $prefix . $text . $suffix;
+    }
+
+    /**
+     * @return string
+     */
+    public function renderPrefix()
+    {
+        return $this->prefix;
+    }
+
+    /**
+     * @return string
+     */
+    public function renderSuffix()
+    {
+        return $this->suffix;
     }
 }

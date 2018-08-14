@@ -9,48 +9,87 @@
 
 namespace Seboettg\CiteProc\Rendering\Date;
 
-
-use PHPUnit_Framework_ExpectationFailedException;
-use Seboettg\CiteProc\CiteProc;
-use Seboettg\CiteProc\Context;
-use Seboettg\CiteProc\Locale\Locale;
+use PHPUnit\Framework\TestCase;
 use Seboettg\CiteProc\TestSuiteTestCaseTrait;
-use Seboettg\CiteProc\TestSuiteTests;
 
-class DateTest extends \PHPUnit_Framework_TestCase implements TestSuiteTests
+class DateTest extends TestCase
 {
 
     use TestSuiteTestCaseTrait;
 
-    public function setUp()
+    public function testDateString()
     {
-        parent::setUp();
-        $context = new Context();
-        $context->setLocale(new Locale("en-GB"));
-        CiteProc::setContext($context);
+        $this->_testRenderTestSuite("date_String");
     }
 
-    private $data = "{\"id\": \"ITEM-2\", \"issued\": {\"date-parts\": [[\"1983\", \"1\", \"15\"]]}, \"title\": \"Item 2\", \"type\": \"book\"}";
-
-    public function testRenderDateParts()
+    public function testNoDate()
     {
-        $xml = "
-              <date variable=\"issued\" form=\"numeric-leading-zeros\">
-                <date-part prefix=\" \" suffix=\".\" name=\"day\"/>
-                <date-part suffix=\".\" name=\"month\"/>
-                <date-part name=\"year\"/>
-              </date>";
-
-        $date = new Date(new \SimpleXMLElement($xml));
-        $ret = $date->render(json_decode($this->data));
-
-        $this->assertEquals(" 15.01.1983", $ret);
-
+        $this->_testRenderTestSuite("date_NoDate");
     }
 
-    public function testRenderTestSuite()
+    public function testLocalizedNumericYear()
     {
-        $this->_testRenderTestSuite('date_');
-
+        $this->_testRenderTestSuite("date_LocalizedNumericYear");
     }
+
+    public function testLocalizedNumericDefaultWithAffixes()
+    {
+        $this->_testRenderTestSuite("date_LocalizedNumericDefaultWithAffixes");
+    }
+
+//    public function testLocalizedNumericDefaultWithMissingDay()
+//    {
+//        $this->_testRenderTestSuite("date_LocalizedNumericDefaultWithMissingDay");
+//    }
+
+    public function testLocalizedNumericDefault()
+    {
+        $this->_testRenderTestSuite("date_LocalizedNumericDefault");
+    }
+
+    public function testLocalizedDateFormats()
+    {
+        $this->_testRenderTestSuite("date_LocalizedDateFormats-");
+    }
+
+    public function testLongMonth()
+    {
+        $this->_testRenderTestSuite("date_LongMonth");
+    }
+
+    public function testDateRanges()
+    {
+        $this->_testRenderTestSuite("date_ranges");
+    }
+
+    public function testRawParseSimpleDate()
+    {
+        $this->_testRenderTestSuite("date_RawParseSimpleDate");
+    }
+
+    public function testDateUncertain()
+    {
+        $this->_testRenderTestSuite("date_Uncertain");
+    }
+
+    public function testCondition_EmptyIsUncertainDate()
+    {
+        $this->_testRenderTestSuite("condition_EmptyIsUncertain");
+    }
+
+    public function testBugfixDateparts()
+    {
+        $this->_testRenderTestSuite("bugfix-dateparts");
+    }
+    /*
+    public function testDateAD()
+    {
+        $this->_testRenderTestSuite("date_DateAD");
+    }
+
+    public function testDateBC()
+    {
+        $this->_testRenderTestSuite("date_DateBC");
+    }
+    */
 }

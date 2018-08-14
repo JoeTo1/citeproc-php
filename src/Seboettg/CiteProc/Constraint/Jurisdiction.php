@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -14,12 +14,18 @@ namespace Seboettg\CiteProc\Constraint;
  * Class Jurisdiction
  * @package Seboettg\CiteProc\Constraint
  *
+ * @codeCoverageIgnore
+ *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
 class Jurisdiction implements ConstraintInterface
 {
-
-    public function validate($value)
+    /**
+     * @param $value
+     * @param int|null $citationNumber
+     * @return bool
+     */
+    public function validate($value, $citationNumber = null)
     {
         return false;
     }

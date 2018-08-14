@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -18,25 +18,33 @@ namespace Seboettg\CiteProc\Constraint;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class isUncertainDate implements ConstraintInterface
+class IsUncertainDate implements ConstraintInterface
 {
-
+    /**
+     * @var string
+     */
     private $varName;
+
 
     private $match;
 
-    public function __construct($value, $match)
+    public function __construct($value, $match = "all")
     {
         $this->varName = $value;
         $this->match = $match;
     }
 
-    public function validate($value)
+    /**
+     * @param $value
+     * @param int|null $citationNumber
+     * @return bool
+     */
+    public function validate($value, $citationNumber = null)
     {
-        $value = $value->{$this->varName};
-
-        if (is_array($value) && array_key_exists('circa', $value)) {
-            return true;
+        if (!empty($value->{$this->varName})) {
+            if (isset($value->{$this->varName}->{'circa'}) && !empty($value->{$this->varName})) {
+                return true;
+            }
         }
 
         return false;

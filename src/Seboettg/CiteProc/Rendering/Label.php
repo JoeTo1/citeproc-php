@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -12,6 +12,7 @@ use Seboettg\CiteProc\CiteProc;
 use Seboettg\CiteProc\Styles\AffixesTrait;
 use Seboettg\CiteProc\Styles\FormattingTrait;
 use Seboettg\CiteProc\Styles\TextCaseTrait;
+use Seboettg\CiteProc\Util\NumberHelper;
 
 
 /**
@@ -20,9 +21,8 @@ use Seboettg\CiteProc\Styles\TextCaseTrait;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class Label implements RenderingInterface
+class Label implements Rendering
 {
-
     use AffixesTrait,
         FormattingTrait,
         TextCaseTrait;
@@ -81,68 +81,56 @@ class Label implements RenderingInterface
     }
 
     /**
-     * @param $data
+     * @param \stdClass $data
+     * @param int|null $citationNumber
      * @return string
      */
-    public function render($data)
+    public function render($data, $citationNumber = null)
     {
         $lang = (isset($data->language) && $data->language != 'en') ? $data->language : 'en';
 
         $text = '';
         $variables = explode(' ', $this->variable);
         $form = !empty($this->form) ? $this->form : 'long';
-        $plural = "";
-        switch ($this->plural) {
-            case 'never':
-                $plural = 'single';
-                break;
-            case 'always':
-                $plural = 'multiple';
-                break;
-            case 'contextual':
-            default:
-        }
-        foreach ($variables as $variable) {
+        $plural = $this->defaultPlural();
 
-            if (isset($data->{$variable})) {
-                if ((!isset($this->plural) || empty($plural)) && is_array($data->{$variable})) {
-                    $count = count($data->{$variable});
-                    if ($count == 1) {
-                        $plural = 'single';
-                    } elseif ($count > 1) {
-                        $plural = 'multiple';
-                    }
-                } else {
-                    if ($this->plural != "always") {
-                        $plural = $this->evaluateStringPluralism($data, $variable);
-                    }
-                }
-                $term = CiteProc::getContext()->getLocale()->filter('terms', $variable, $form);
-                $var = $data->{$variable};
+        if ($this->variable === "editortranslator") {
+            if (isset($data->editor) && isset($data->translator)) {
+                $plural = $this->getPlural($data, $plural, "editortranslator");
+                $term = CiteProc::getContext()->getLocale()->filter('terms', "editortranslator", $form);
                 $pluralForm = $term->{$plural};
-                if (!empty($var) && !empty($pluralForm)) {
+                if (!empty($pluralForm)) {
                     $text = $pluralForm;
-                    break;
+                }
+            }
+        } else {
+            foreach ($variables as $variable) {
+
+                if (isset($data->{$variable})) {
+                    $plural = $this->getPlural($data, $plural, $variable);
+                    $term = CiteProc::getContext()->getLocale()->filter('terms', $variable, $form);
+                    $pluralForm = $term->{$plural};
+                    if (!empty($data->{$variable}) && !empty($pluralForm)) {
+                        $text = $pluralForm;
+                        break;
+                    }
                 }
             }
         }
-        if (empty($text)) {
-            return "";
-        }
-        if ($this->stripPeriods) {
-            $text = str_replace('.', '', $text);
-        }
-        $text = $this->format($this->applyTextCase($text, $lang));
-        return $this->addAffixes($text);
+
+        return $this->formatting($text, $lang);
     }
 
-
+    /**
+     * @param $data
+     * @param $variable
+     * @return string
+     */
     private function evaluateStringPluralism($data, $variable)
     {
-        $str = $data->{$variable};
+        $str = isset($data->{$variable}) ? $data->{$variable} : '';
         $plural = 'single';
         if (!empty($str)) {
-//      $regex = '/(?:[0-9],\s*[0-9]|\s+and\s+|&|([0-9]+)\s*[\-\x2013]\s*([0-9]+))/';
             switch ($variable) {
                 case 'page':
                     $pageRegex = "/([a-zA-Z]*)([0-9]+)\s*(?:–|-)\s*([a-zA-Z]*)([0-9]+)/";
@@ -168,5 +156,97 @@ class Label implements RenderingInterface
     public function setVariable($variable)
     {
         $this->variable = $variable;
+    }
+
+    /**
+     * @param $data
+     * @param $plural
+     * @param $variable
+     * @return string
+     */
+    protected function getPlural($data, $plural, $variable)
+    {
+
+        if ($variable === "editortranslator" && isset($data->editor)) {
+            $var = $data->editor;
+        } else {
+            $var = $data->{$variable};
+        }
+        if (((!isset($this->plural) || empty($plural))) && !empty($var)) {
+            if (is_array($var)) {
+                $count = count($var);
+                if ($count == 1) {
+                    $plural = 'single';
+                    return $plural;
+                } elseif ($count > 1) {
+                    $plural = 'multiple';
+                    return $plural;
+                }
+                return $plural;
+            } else {
+                return $this->evaluateStringPluralism($data, $variable);
+            }
+
+        } else {
+            if ($this->plural != "always") {
+                $plural = $this->evaluateStringPluralism($data, $variable);
+                return $plural;
+            }
+            return $plural;
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function getForm()
+    {
+        return $this->form;
+    }
+
+    /**
+     * @param string $form
+     */
+    public function setForm($form)
+    {
+        $this->form = $form;
+    }
+
+    /**
+     * @param $text
+     * @param $lang
+     * @return string
+     */
+    protected function formatting($text, $lang)
+    {
+        if (empty($text)) {
+            return "";
+        }
+        if ($this->stripPeriods) {
+            $text = str_replace('.', '', $text);
+        }
+
+        $text = preg_replace("/\s\&\s/", " &#38; ", $text); //replace ampersands by html entity
+        $text = $this->format($this->applyTextCase($text, $lang));
+        return $this->addAffixes($text);
+    }
+
+    /**
+     * @return string
+     */
+    protected function defaultPlural()
+    {
+        $plural = "";
+        switch ($this->plural) {
+            case 'never':
+                $plural = 'single';
+                break;
+            case 'always':
+                $plural = 'multiple';
+                break;
+            case 'contextual':
+            default:
+        }
+        return $plural;
     }
 }

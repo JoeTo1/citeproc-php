@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -12,6 +12,11 @@ namespace Seboettg\CiteProc\Styles;
 
 use Seboettg\Collection\ArrayList;
 
+/**
+ * Trait FormattingTrait
+ * @package Seboettg\CiteProc\Styles
+ * @author Sebastian Böttger <seboettg@gmail.com>
+ */
 trait FormattingTrait
 {
 
@@ -35,6 +40,9 @@ trait FormattingTrait
      */
     private $format;
 
+    /**
+     * @param \SimpleXMLElement $node
+     */
     protected function initFormattingAttributes(\SimpleXMLElement $node)
     {
         $this->formattingOptions = new ArrayList();
@@ -67,8 +75,18 @@ trait FormattingTrait
                     $text = "<i>$text</i>";
                 } else if ($optionValue === "bold") {
                     $text = "<b>$text</b>";
+                } else if ($optionValue === "normal") {
+                    //$text = $text;
+                } else if ($option === "vertical-align") {
+                    if ($optionValue === "sub") {
+                        $text = "<sub>$text</sub>";
+                    } else if ($optionValue === "sup") {
+                        $text = "<sup>$text</sup>";
+                    }
+                } else if ($option === "text-decoration" && $optionValue === "none") {
+
                 } else {
-                    $format .= "$option:$optionValue;";
+                    $format .= "$option: $optionValue;";
                 }
             }
             if (!empty($format)) {

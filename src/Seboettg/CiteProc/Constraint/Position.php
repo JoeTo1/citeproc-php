@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -35,15 +35,25 @@ namespace Seboettg\CiteProc\Constraint;
  * Whenever position=”ibid-with-locator” tests true, position=”ibid” also tests true. And whenever position=”ibid” or
  * position=”near-note” test true, position=”subsequent” also tests true.
  *
+ * @codeCoverageIgnore
+ *
  * @package Seboettg\CiteProc\Choose\Constraint
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
 class Position implements ConstraintInterface
 {
-
-    public function validate($value)
+    /**
+     * @param $value
+     * @param int|null $citationNumber
+     * @return bool
+     */
+    public function validate($value, $citationNumber = null)
     {
+        if (!is_null($citationNumber)) {
+
+        }
+
         return false;
     }
 }

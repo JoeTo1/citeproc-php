@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -9,93 +9,255 @@
 
 namespace Seboettg\CiteProc\Rendering;
 
-
+use PHPUnit\Framework\TestCase;
 use Seboettg\CiteProc\CiteProc;
 use Seboettg\CiteProc\Context;
 use Seboettg\CiteProc\Locale\Locale;
 use Seboettg\CiteProc\Style\Macro;
+use Seboettg\CiteProc\StyleSheet;
 
-class TextTest extends \PHPUnit_Framework_TestCase
+class TextTest extends TestCase
 {
 
-    private $textXml = ['<text variable="title"/>'];
+    private $textXml = <<<EOT
+<?xml version="1.0" encoding="utf-8"?>
+<style>
+    <citation>
+        <layout>
+            <text variable="title"/>
+        </layout>
+    </citation>
+</style>;
+EOT;
+
 
     private $dataTitle  = '{"title":"Ein herzzerreißendes Werk von umwerfender Genialität","type":"book"}';
     private $dataPublisherPlace = '{"publisher-place":"Frankfurt am Main"}';
 
     /**
-     * @var Text
+     * @var CiteProc
      */
-    private $text;
+    private $citeproc;
 
     public function setUp()
     {
-        $xml = new \SimpleXMLElement($this->textXml[0]);
-        $this->text = new Text($xml);
-    }
-
-    public function testVariable()
-    {
-        //test variable
-        $ret = $this->text->render(json_decode($this->dataTitle));
-
-        $this->assertEquals("Ein herzzerreißendes Werk von umwerfender Genialität", $ret);
-        $this->assertEmpty($this->text->render(json_decode($this->dataPublisherPlace)));
 
     }
 
-    public function testVariableShortTitle()
-    {
-        $text = new Text(new \SimpleXMLElement("<text variable=\"title\" form=\"short\"/>"));
-        $data = "{
-            \"container-title\": \"my container title\", 
-            \"id\": \"ITEM-1\", 
-            \"shortTitle\": \"something\", 
-            \"type\": \"manuscript\"
-        }";
-        $actual = $text->render(json_decode($data));
-        $this->assertEquals("something", $actual);
 
-    }
 
     public function testMacro()
     {
 
-        $macroXml = "<macro name=\"title\"><choose><if type=\"book\"><text variable=\"title\" font-style=\"italic\"/></if><else><text variable=\"title\"/></else></choose></macro>";
-        $context = new Context();
-        $macro = new Macro(new \SimpleXMLElement($macroXml));
-        $context->addMacro($macro->getName(), $macro);
-        CiteProc::setContext($context);
-        $text = new Text(new \SimpleXMLElement("<text macro=\"title\"/>"));
+        $macroXml = <<<EOT
+<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0">
+    <macro name="title">
+        <choose>
+            <if type="book">
+                <text variable="title" font-style="italic"/>
+            </if>
+            <else>
+                <text variable="title"/>
+            </else>
+        </choose>
+    </macro>
+    <citation>
+        <layout>
+            <text macro="title"/>
+        </layout>
+    </citation>
+</style>
+EOT;
+        $citeProc = new CiteProc($macroXml);
+
+
 
         $this->assertEquals(
             "<i>Ein Buch</i>",
-            $text->render(json_decode("{\"title\":\"Ein Buch\", \"type\": \"book\"}"))
+            $citeProc->render(json_decode("[{\"title\":\"Ein Buch\", \"type\": \"book\"}]"), "citation")
         );
 
         $this->assertEquals(
             "Ein Buch",
-            $text->render(json_decode("{\"title\":\"Ein Buch\", \"type\": \"thesis\"}"))
+            $citeProc->render(json_decode("[{\"title\":\"Ein Buch\", \"type\": \"thesis\"}]"), "citation")
         );
     }
 
-    public function testValue()
+    public function testEnrichMarkupTitles()
     {
-        $text = new Text(new \SimpleXMLElement("<text value=\"Ein Titel\"/>"));
-        $this->assertEquals("Ein Titel", $text->render(null));
+        $cslJson = '[{
+            "author": [
+              {
+                "family": "Doe",
+                "given": "John",
+                "id": "doe"
+              },
+              {
+                "family": "Müller",
+                "given": "Alexander"
+              }
+            ],
+            "id": "item-1",
+            "issued": {
+              "date-parts": [
+                [
+                  "2001"
+                ]
+              ]
+            },
+            "title": "My Anonymous Heritage",
+            "type": "book"
+        }]';
+
+        $enrichTitleWithLinkFunction = function($citeItem, $renderedVariable) {
+            return isset($citeItem->id) ? '<a href="https://example.org/publication/' . $citeItem->id . '" title="' . $renderedVariable . '">'
+                . $renderedVariable . '</a>' : $renderedVariable;
+        };
+
+        $apa = StyleSheet::loadStyleSheet("apa");
+        $citeproc = new CiteProc($apa, "de-DE",
+            [
+                'title' => $enrichTitleWithLinkFunction
+            ]
+        );
+        $actual = $citeproc->render(json_decode($cslJson), "bibliography");
+
+        $expected = '<div class="csl-bib-body">
+  <div class="csl-entry">Doe, J., &#38; Müller, A. (2001). <i><a href="https://example.org/publication/item-1" title="My Anonymous Heritage">My Anonymous Heritage</a></i>.</div>
+</div>';
+        $this->assertEquals($expected, $actual);
     }
 
-
-
-    public function testTerm()
+    /**
+     * @throws \Seboettg\CiteProc\Exception\CiteProcException
+     */
+    public function testEnrichMarkupURL()
     {
-        $context = new Context();
-        $context->setLocale(new Locale("de-DE"));
-        CiteProc::setContext($context);
+        $cslJson = '[{
+            "author": [
+              {
+                "family": "Doe",
+                "given": "John",
+                "id": "doe"
+              },
+              {
+                "family": "Müller",
+                "given": "Alexander"
+              }
+            ],
+            "container-title": "Heritages and taxes. How to avoid responsibility.",
+            "id": "item-1",
+            "issued": {
+              "date-parts": [
+                [
+                  "2001"
+                ]
+              ]
+            },
+            "page": "123-127",
+            "publisher": "Initiative Neue Soziale Marktwirtschaft (INSM)",
+            "publisher-place": "Berlin, Germany",
+            "title": "My Anonymous Heritage",
+            "type": "book",
+            "URL": "https://example.org/publication/item-1"
+        }]';
 
-        $text = new Text(new \SimpleXMLElement("<text term=\"book\"/>"));
-        $this->assertEquals("Buch", $text->render(null));
+        $enrichUrlWithLinkFunction = function($citeItem, $renderedVariable) {
+            return preg_match("/http[s]?:\/\/.+/", $citeItem->URL) ? '<a href="' . $citeItem->URL . '">'
+                . $citeItem->URL . '</a>' : $citeItem->URL;
+        };
+
+        $apa = StyleSheet::loadStyleSheet("apa");
+        $citeproc = new CiteProc($apa, "en-US",             [
+            'URL' => $enrichUrlWithLinkFunction
+        ]);
+        $actual = $citeproc->render(json_decode($cslJson), "bibliography");
+
+        $expected = '<div class="csl-bib-body">
+  <div class="csl-entry">Doe, J., &#38; Müller, A. (2001). <i>My Anonymous Heritage</i>. <i>Heritages and taxes. How to avoid responsibility.</i> (pp. 123-127). Berlin, Germany: Initiative Neue Soziale Marktwirtschaft (INSM). Retrieved from <a href="https://example.org/publication/item-1">https://example.org/publication/item-1</a></div>
+</div>';
+        $this->assertEquals($expected, $actual);
     }
 
+    public function testEnrichMarkupCitationNumber()
+    {
+        $cslJson = '[
+          {
+            "author": [
+              {
+                "family": "Doe",
+                "given": "James",
+                "suffix": "III"
+              }
+            ],
+            "id": "item-1",
+            "issued": {
+              "date-parts": [
+                [
+                  "2001"
+                ]
+              ]
+            },
+            "title": "My Anonymous Heritage",
+            "type": "book"
+          },
+          {
+            "author": [
+              {
+                "family": "Anderson",
+                "given": "John",
+                "id": "anderson.j"
+              },
+              {
+                "family": "Brown",
+                "given": "John",
+                "id": "brown.j"
+              }
+            ],
+            "issued": {
+              "date-parts": [
+                [
+                  "1998"
+                ]
+              ]
+            },
+            "id": "ITEM-2",
+            "type": "book",
+            "title": "Two authors writing a book"
+          }]';
 
+        $apa = StyleSheet::loadStyleSheet("elsevier-with-titles");
+
+        $citeproc = new CiteProc($apa, "en-US",
+            [
+                "bibliography" => [
+                    "citation-number" => function($citeItem, $renderedVariable) {
+                        return isset($citeItem->id) ? '<a id="' . $citeItem->id. '" href="#' . $citeItem->id . '">'
+                            . $renderedVariable . '</a>' : $renderedVariable;
+                    }
+                ],
+                "citation" => [
+                    "citation-number" => function($citeItem, $renderedVariable) {
+                        return isset($citeItem->id) ? '<a href="#' . $citeItem->id . '">'
+                            . $renderedVariable . '</a>' : $renderedVariable;
+                    }
+                ]
+            ]
+        );
+
+        $actual = $citeproc->render(json_decode($cslJson), "bibliography");
+
+        $expected = '<div class="csl-bib-body">
+  <div class="csl-entry"><div class="csl-left-margin">[<a id="item-1" href="#item-1">1</a>]</div><div class="csl-right-inline">J. Doe III, My Anonymous Heritage, 2001.</div></div>
+  <div class="csl-entry"><div class="csl-left-margin">[<a id="ITEM-2" href="#ITEM-2">2</a>]</div><div class="csl-right-inline">J. Anderson, J. Brown, Two authors writing a book, 1998.</div></div>
+</div>';
+        $this->assertEquals($expected, $actual);
+
+        $actual = $citeproc->render(json_decode($cslJson), "citation");
+
+        $expected = '[<a href="#item-1">1</a>,<a href="#ITEM-2">2</a>]';
+
+        $this->assertEquals($expected, $actual);
+    }
 }

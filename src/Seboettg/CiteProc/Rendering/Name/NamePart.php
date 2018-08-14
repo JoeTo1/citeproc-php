@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -8,9 +8,13 @@
  */
 
 namespace Seboettg\CiteProc\Rendering\Name;
+use Seboettg\CiteProc\CiteProc;
+use Seboettg\CiteProc\Exception\CiteProcException;
+use Seboettg\CiteProc\Style\Options\DemoteNonDroppingParticle;
 use Seboettg\CiteProc\Styles\AffixesTrait;
 use Seboettg\CiteProc\Styles\FormattingTrait;
 use Seboettg\CiteProc\Styles\TextCaseTrait;
+use Seboettg\CiteProc\Util\NameHelper;
 
 /**
  * Class NamePart
@@ -50,6 +54,7 @@ class NamePart
     /**
      * NamePart constructor.
      * @param \SimpleXMLElement $node
+     * @param Name $parent
      */
     public function __construct(\SimpleXMLElement $node, $parent)
     {
@@ -67,10 +72,14 @@ class NamePart
         $this->initAffixesAttributes($node);
     }
 
+    /**
+     * @param $data
+     * @return mixed
+     * @throws CiteProcException
+     */
     public function render($data)
     {
-        $ret = "";
-        if (!$data->{$this->name}) {
+        if (!isset($data->{$this->name})) {
             return "";
         }
 
@@ -80,30 +89,24 @@ class NamePart
             “dropping-particle” name-parts. affixes surround the “given” name-part, enclosing any demoted name particles
             for inverted names.*/
             case 'given':
-                $given = $this->format($this->applyTextCase($data->given));
-                if (isset($data->{'dropping-particle'})) {
-                    $given = " " . $this->format($this->applyTextCase($data->{'dropping-particle'}));
-                }
-                $ret = $given;
-                break;
+                return $this->addAffixes($this->format($this->applyTextCase($data->given)));
 
             /* if name set to “family”, formatting and text-case attributes affect the “family” and
             “non-dropping-particle” name-parts. affixes surround the “family” name-part, enclosing any preceding name
             particles, as well as the “suffix” name-part for non-inverted names.*/
             case 'family':
-                $family = $this->format($this->applyTextCase($data->family));
-                if (isset($data->{'non-dropping-particle'})) {
-                    $family = $this->format($this->applyTextCase($data->{'non-dropping-particle'})) . " " . $family;
-                }
-                $ret = $family;
-                break;
-        }
+                return $this->addAffixes($this->format($this->applyTextCase($data->family)));
 
-        return $this->addAffixes($ret);
+        }
+        throw new CiteProcException("This shouldn't happen.");
     }
 
+    /**
+     * @return string
+     */
     public function getName()
     {
         return $this->name;
     }
+
 }

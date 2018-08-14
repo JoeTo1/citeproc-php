@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -8,8 +8,11 @@
  */
 
 namespace Seboettg\CiteProc\Style;
+
 use Seboettg\CiteProc\Exception\CiteProcException;
-use Seboettg\CiteProc\Rendering\RenderingInterface;
+use Seboettg\CiteProc\Rendering\HasParent;
+use Seboettg\CiteProc\Rendering\Rendering;
+use Seboettg\CiteProc\Styles\ConsecutivePunctuationCharacterTrait;
 use Seboettg\CiteProc\Util\Factory;
 use Seboettg\Collection\ArrayList;
 
@@ -29,8 +32,9 @@ use Seboettg\Collection\ArrayList;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class Macro implements RenderingInterface
+class Macro implements Rendering, HasParent
 {
+    use ConsecutivePunctuationCharacterTrait;
 
     /**
      * @var ArrayList
@@ -43,12 +47,18 @@ class Macro implements RenderingInterface
     private $name;
 
     /**
+     * @var Root
+     */
+    private $parent;
+    /**
      * Macro constructor.
      * @param \SimpleXMLElement $node
+     * @param Root $parent
      * @throws CiteProcException
      */
-    public function __construct(\SimpleXMLElement $node)
+    public function __construct(\SimpleXMLElement $node, $parent)
     {
+        $this->parent = $parent;
         $attr = $node->attributes();
         if (!isset($attr['name'])) {
             throw new CiteProcException("Attribute \"name\" needed.");
@@ -57,22 +67,47 @@ class Macro implements RenderingInterface
 
         $this->children = new ArrayList();
         foreach ($node->children() as $child) {
-            $this->children->append(Factory::create($child));
+            $this->children->append(Factory::create($child, $this));
         }
     }
 
-    public function render($data)
+    /**
+     * @param \stdClass $data
+     * @param int|null $citationNumber
+     * @return string
+     */
+    public function render($data, $citationNumber = null)
     {
-        $ret = "";
-        /** @var RenderingInterface $child */
+        $ret = [];
+        /** @var Rendering $child */
         foreach ($this->children as $child) {
-            $ret .= $child->render($data);
+            $res = $child->render($data, $citationNumber);
+            $this->getChildsAffixesAndDelimiter($child);
+            if (!empty($res)) {
+                $ret[] = $res;
+            }
         }
-        return $ret;
+        $res = implode("", $ret);
+        if (!empty($res)) {
+            $res = $this->removeConsecutiveChars($res);
+        }
+        return $res;
     }
 
+    /**
+     * @return string
+     */
     public function getName()
     {
         return $this->name;
     }
+
+    /**
+     * @return Root
+     */
+    public function getParent()
+    {
+        return $this->parent;
+    }
+
 }

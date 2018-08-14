@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -9,10 +9,18 @@
 
 namespace Seboettg\CiteProc\Rendering\Name;
 use Seboettg\CiteProc\CiteProc;
+use Seboettg\CiteProc\Exception\CiteProcException;
+use Seboettg\CiteProc\Rendering\HasParent;
+use Seboettg\CiteProc\Rendering\Rendering;
+use Seboettg\CiteProc\Style\InheritableNameAttributesTrait;
+use Seboettg\CiteProc\Style\Options\DemoteNonDroppingParticle;
+use Seboettg\CiteProc\Style\Options\SubsequentAuthorSubstituteRule;
 use Seboettg\CiteProc\Styles\AffixesTrait;
 use Seboettg\CiteProc\Styles\DelimiterTrait;
 use Seboettg\CiteProc\Styles\FormattingTrait;
+use Seboettg\CiteProc\Util\CiteProcHelper;
 use Seboettg\CiteProc\Util\Factory;
+use Seboettg\CiteProc\Util\NameHelper;
 use Seboettg\CiteProc\Util\StringHelper;
 
 
@@ -26,9 +34,10 @@ use Seboettg\CiteProc\Util\StringHelper;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class Name
+class Name implements HasParent
 {
-    use FormattingTrait,
+    use InheritableNameAttributesTrait,
+        FormattingTrait,
         AffixesTrait,
         DelimiterTrait;
 
@@ -38,166 +47,30 @@ class Name
     protected $nameParts;
 
     /**
-     * Specifies the delimiter between the second to last and last name of the names in a name variable. Allowed values
-     * are “text” (selects the “and” term, e.g. “Doe, Johnson and Smith”) and “symbol” (selects the ampersand,
-     * e.g. “Doe, Johnson & Smith”).
-     *
-     * @var string
-     */
-    private $and;
-
-    /**
-     * Determines when the name delimiter or a space is used between a truncated name list and the “et-al”
-     * (or “and others”) term in case of et-al abbreviation. Allowed values:
-     * - “contextual” - (default), name delimiter is only used for name lists truncated to two or more names
-     *   - 1 name: “J. Doe et al.”
-     *   - 2 names: “J. Doe, S. Smith, et al.”
-     * - “after-inverted-name” - name delimiter is only used if the preceding name is inverted as a result of the
-     *   - name-as-sort-order attribute. E.g. with name-as-sort-order set to “first”:
-     *   - “Doe, J., et al.”
-     *   - “Doe, J., S. Smith et al.”
-     * - “always” - name delimiter is always used
-     *   - 1 name: “J. Doe, et al.”
-     *   - 2 names: “J. Doe, S. Smith, et al.”
-     * - “never” - name delimiter is never used
-     *   - 1 name: “J. Doe et al.”
-     *   - 2 names: “J. Doe, S. Smith et al.”
-     *
-     * @var string
-     */
-    private $delimiterPrecedesEtAl;
-
-    /**
-     * Determines when the name delimiter is used to separate the second to last and the last name in name lists (if
-     * and is not set, the name delimiter is always used, regardless of the value of delimiter-precedes-last). Allowed
-     * values:
-     *
-     * - “contextual” - (default), name delimiter is only used for name lists with three or more names
-     *   - 2 names: “J. Doe and T. Williams”
-     *   - 3 names: “J. Doe, S. Smith, and T. Williams”
-     * - “after-inverted-name” - name delimiter is only used if the preceding name is inverted as a result of the
-     *   name-as-sort-order attribute. E.g. with name-as-sort-order set to “first”:
-     *   - “Doe, J., and T. Williams”
-     *   - “Doe, J., S. Smith and T. Williams”
-     * - “always” - name delimiter is always used
-     *   - 2 names: “J. Doe, and T. Williams”
-     *   - 3 names: “J. Doe, S. Smith, and T. Williams”
-     * - “never” - name delimiter is never used
-     *   - 2 names: “J. Doe and T. Williams”
-     *   - 3 names: “J. Doe, S. Smith and T. Williams”
-     *
-     * @var string
-     */
-    private $delimiterPrecedesLast;
-
-    /**
-     * Use of etAlMin (et-al-min attribute) and etAlUseFirst (et-al-use-first attribute) enables et-al abbreviation. If
-     * the number of names in a name variable matches or exceeds the number set on etAlMin, the rendered name list is
-     * truncated after reaching the number of names set on etAlUseFirst.
-     *
-     * @var int
-     */
-    private $etAlMin;
-
-    /**
-     * Use of etAlMin (et-al-min attribute) and etAlUseFirst (et-al-use-first attribute) enables et-al abbreviation. If
-     * the number of names in a name variable matches or exceeds the number set on etAlMin, the rendered name list is
-     * truncated after reaching the number of names set on etAlUseFirst.
-     *
-     * @var int
-     */
-    private $etAlUseFirst;
-
-    /**
-     * If used, the values of these attributes (et-al-subsequent-min and et-al-subsequent-use-first) replace those of
-     * respectively et-al-min and et-al-use-first for subsequent cites (cites referencing earlier cited items).
-     *
-     * @var int
-     */
-    private $etAlSubsequentMin;
-
-    /**
-     * If used, the values of these attributes (et-al-subsequent-min and et-al-subsequent-use-first) replace those of
-     * respectively et-al-min and et-al-use-first for subsequent cites (cites referencing earlier cited items).
-     *
-     * @var int
-     */
-    private $etAlSubsequentUseFirst;
-
-    /**
-     * When set to “true” (the default is “false”), name lists truncated by et-al abbreviation are followed by the name
-     * delimiter, the ellipsis character, and the last name of the original name list. This is only possible when the
-     * original name list has at least two more names than the truncated name list (for this the value of
-     * et-al-use-first/et-al-subsequent-min must be at least 2 less than the value of
-     * et-al-min/et-al-subsequent-use-first).
-     * A. Goffeau, B. G. Barrell, H. Bussey, R. W. Davis, B. Dujon, H. Feldmann, … S. G. Oliver
-     *
-     * @var bool
-     */
-    private $etAlUseLast = false;
-
-    /**
-     * Specifies whether all the name-parts of personal names should be displayed (value “long”, the default), or only
-     * the family name and the non-dropping-particle (value “short”). A third value, “count”, returns the total number
-     * of names that would otherwise be rendered by the use of the cs:names element (taking into account the effects of
-     * et-al abbreviation and editor/translator collapsing), which allows for advanced sorting.
-     *
-     * @var string
-     */
-    private $form = "long";
-
-    /**
-     * When set to “false” (the default is “true”), given names are no longer initialized when “initialize-with” is set.
-     * However, the value of “initialize-with” is still added after initials present in the full name (e.g. with
-     * initialize set to “false”, and initialize-with set to ”.”, “James T Kirk” becomes “James T. Kirk”).
-     *
-     * @var bool
-     */
-    private $initialize = true;
-
-    /**
-     * When set, given names are converted to initials. The attribute value is added after each initial (”.” results
-     * in “J.J. Doe”). For compound given names (e.g. “Jean-Luc”), hyphenation of the initials can be controlled with
-     * the global initialize-with-hyphen option
-     *
-     * @var string
-     */
-    private $initializeWith = "";
-
-    /**
-     * Specifies that names should be displayed with the given name following the family name (e.g. “John Doe” becomes
-     * “Doe, John”). The attribute has two possible values:
-     *   - “first” - attribute only has an effect on the first name of each name variable
-     *   - “all” - attribute has an effect on all names
-     * Note that even when name-as-sort-order changes the name-part order, the display order is not necessarily the same
-     * as the sorting order for names containing particles and suffixes (see Name-part order). Also, name-as-sort-order
-     * only affects names written in the latin or Cyrillic alphabets. Names written in other alphabets (e.g. Asian
-     * scripts) are always displayed with the family name preceding the given name.
-     *
-     * @var string
-     */
-    private $nameAsSortOrder = "";
-
-    /**
-     * Sets the delimiter for name-parts that have switched positions as a result of name-as-sort-order. The default
-     * value is ”, ” (“Doe, John”). As is the case for name-as-sort-order, this attribute only affects names written in
-     * the latin or Cyrillic alphabets.
-     *
-     * @var string
-     */
-    private $sortSeparator = ", ";
-
-    /**
      * Specifies the text string used to separate names in a name variable. Default is ”, ” (e.g. “Doe, Smith”).
      * @var
      */
     private $delimiter = ", ";
 
-
     /**
      * @var Names
      */
     private $parent;
+
+    /**
+     * @var \SimpleXMLElement
+     */
+    private $node;
+
+    /**
+     * @var string
+     */
+    private $etAl;
+
+    /**
+     * @var string
+     */
+    private $variable;
 
     /**
      * Name constructor.
@@ -206,8 +79,10 @@ class Name
      */
     public function __construct(\SimpleXMLElement $node, Names $parent)
     {
-        $this->nameParts = [];
+        $this->node = $node;
         $this->parent = $parent;
+
+        $this->nameParts = [];
 
         /** @var \SimpleXMLElement $child */
         foreach ($node->children() as $child) {
@@ -220,55 +95,13 @@ class Name
             }
         }
 
-
-        /** @var \SimpleXMLElement $attribute */
         foreach ($node->attributes() as $attribute) {
             switch ($attribute->getName()) {
-                case 'and':
-                    $and = (string)$attribute;
-                    if ("text" === $and) {
-                        $this->and = CiteProc::getContext()->getLocale()->filter('terms', 'and')->single;
-                    } elseif ('symbol' === $and) {
-                        $this->and = '&';
-                    }
-                    break;
-                case 'delimiter-precedes-et-al':
-                    $this->delimiterPrecedesEtAl = (string) $attribute;
-                    break;
-                case 'delimiter-precedes-last':
-                    $this->delimiterPrecedesLast = (string) $attribute;
-                    break;
-                case 'et-al-min':
-                    $this->etAlMin = intval((string) $attribute);
-                    break;
-                case 'et-al-use-first':
-                    $this->etAlUseFirst = intval((string) $attribute);
-                    break;
-                case 'et-al-subsequent-min':
-                    $this->etAlSubsequentMin = intval((string) $attribute);
-                    break;
-                case 'et-al-subsequent-use-first':
-                    $this->etAlSubsequentUseFirst = intval((string) $attribute);
-                    break;
-                case 'et-al-use-last':
-                    $this->etAlUseLast = boolval((string) $attribute);
-                    break;
                 case 'form':
-                    $this->form = (string) $attribute;
+                    $this->form = (string)$attribute;
                     break;
-                case 'initialize':
-                    $this->initialize = boolval((string) $attribute);
-                    break;
-                case 'initialize-with':
-                    $this->initializeWith = (string) $attribute;
-                    break;
-                case 'name-as-sort-order':
-                    $this->nameAsSortOrder = (string) $attribute;
-                    break;
-                case 'sort-separator':
-                    $this->sortSeparator = (string) $attribute;
-
             }
+
         }
 
         $this->initFormattingAttributes($node);
@@ -276,196 +109,520 @@ class Name
         $this->initDelimiterAttributes($node);
     }
 
-    public function render($data)
+    /**
+     * @param array $name
+     * @param integer|null $citationNumber
+     * @return string
+     */
+    public function render($data, $var, $citationNumber = null)
     {
-        $resultNames = [];
-        $etAl = false;
-        $count = 0;
-        /**
-         * @var string $type
-         * @var array $name
-         */
-        foreach ($data as $rank => $name) {
-            ++$count;
-            $resultNames[] = $this->formatName($name, $rank);
+        $this->variable = $var;
+        $name = $data->{$var};
+        if (!$this->attributesInitialized) {
+            $this->initInheritableNameAttributes($this->node);
+        }
+        if ("text" === $this->and) {
+            $this->and = CiteProc::getContext()->getLocale()->filter('terms', 'and')->single;
+        } elseif ('symbol' === $this->and) {
+            $this->and = '&#38;';
         }
 
-        /* Use of et-al-min and et-al-user-first enables et-al abbreviation. If the number of names in a name variable
-        matches or exceeds the number set on et-al-min, the rendered name list is truncated after reaching the number of
-        names set on et-al-use-first.  */
-        if (isset($this->etAlMin) && isset($this->etAlUseFirst)) {
-            $cnt = count($resultNames);
-            if ($this->etAlMin >= count($cnt)) {
-                for ($i = $this->etAlUseFirst; $i < $cnt; ++$i) {
-                    unset($resultNames[$i]);
-                }
-            }
-            if ($this->parent->hasEtAl()) {
-                $etAl = $this->parent->getEtAl()->render($name);
-            } else {
-                $etAl = CiteProc::getContext()->getLocale()->filter('terms', 'et-al')->single;
-            }
+        $resultNames = $this->handleSubsequentAuthorSubstitution($name, $citationNumber);
+
+        if (empty($resultNames)) {
+            return CiteProc::getContext()->getCitationItems()->getSubsequentAuthorSubstitute();
         }
 
+        $resultNames = $this->prepareAbbreviation($resultNames);
+
+        /* When set to “true” (the default is “false”), name lists truncated by et-al abbreviation are followed by
+        the name delimiter, the ellipsis character, and the last name of the original name list. This is only
+        possible when the original name list has at least two more names than the truncated name list (for this
+        the value of et-al-use-first/et-al-subsequent-min must be at least 2 less than the value of
+        et-al-min/et-al-subsequent-use-first). */
+        if ($this->etAlUseLast) {
+            $this->and = "…"; // set "and"
+            $this->etAl = null; //reset $etAl;
+        }
 
         /* add "and" */
-        $count = count($resultNames);
-        if (!empty($this->and) && $count > 1 && !$etAl) {
-            $new = $this->and . ' ' . end($resultNames); //stick an "and" in front of the last author if "and" is defined
-            $resultNames[key($resultNames)] = $new;
+        $this->addAnd($resultNames);
+
+        $text = $this->renderDelimiterPrecedesLast($resultNames);
+
+        if (empty($text)) {
+            $text = implode($this->delimiter, $resultNames);
         }
 
-        $text = implode($this->delimiter, $resultNames);
+        $text = $this->appendEtAl($name, $text, $resultNames);
 
-        if (!empty($resultNames) && $etAl) {
-
-            /* By default, when a name list is truncated to a single name, the name and the “et-al” (or “and others”)
-            term are separated by a space (e.g. “Doe et al.”). When a name list is truncated to two or more names, the
-            name delimiter is used (e.g. “Doe, Smith, et al.”). This behavior can be changed with the
-            delimiter-precedes-et-al attribute. */
-            switch ($this->delimiterPrecedesEtAl) {
-                case 'never':
-                    $text = $text . " $etAl";
-                    break;
-                case 'always':
-                    $text = $text . "$this->delimiter$etAl";
-                    break;
-                default:
-                    if (count($resultNames) === 1) {
-                        $text .= " $etAl";
-                    } else {
-                        $text .=  $this->delimiter . $etAl;
-                    }
-
-            }
-        }
+        /* A third value, “count”, returns the total number of names that would otherwise be rendered by the use of the
+        cs:names element (taking into account the effects of et-al abbreviation and editor/translator collapsing),
+        which allows for advanced sorting. */
         if ($this->form == 'count') {
-            if ($etAl === false) {
-                return (int)count($resultNames);
-            } else {
-                return (int)(count($resultNames) - 1);
-            }
+            return (int)count($resultNames);
         }
-        // strip out the last delimiter if not required
-        if (isset($this->and) && count($resultNames) > 1) {
-            $lastDelimiter = strrpos($text, $this->delimiter . $this->and);
-            switch ($this->delimiterPrecedesLast) {
-                case 'always':
-                    return $text;
-                    break;
-                case 'never':
-                    return substr_replace($text, ' ', $lastDelimiter, strlen($this->delimiter));
-                    break;
-                case 'contextual':
-                default:
-                    if (count($resultNames) < 3 && $lastDelimiter !== false) {
-                        return substr_replace($text, ' ', $lastDelimiter, strlen($this->delimiter));
-                    }
-            }
-        }
+
         return $text;
     }
 
-    private function formatName($name, $rank)
+    /**
+     * @param \stdClass $nameItem
+     * @param int $rank
+     * @return string
+     */
+    private function formatName($nameItem, $rank)
     {
-        $useInitials = $this->initialize && !empty($this->initializeWith);
-        if ($useInitials) {
-            //TODO: initialize with hyphen
-            $given = $name->given;
-            $name->given = "";
-            $givenParts = StringHelper::explodeBySpaceOrHyphen($given);
-            foreach ($givenParts as $givenPart) {
-                $name->given .= substr($givenPart, 0, 1) . $this->initializeWith;
-            }
+
+        $nameObj = $this->cloneNamePOSC($nameItem);
+
+        $useInitials = $this->initialize && !is_null($this->initializeWith) && $this->initializeWith !== false;
+        if ($useInitials && isset($nameItem->given)) {
+            $nameObj->given = StringHelper::initializeBySpaceOrHyphen($nameItem->given, $this->initializeWith);
         }
 
-        // format name-parts
-        if (count($this->nameParts) > 0) {
-            /** @var NamePart $namePart */
-            foreach ($this->nameParts as $namePart) {
-                $name->{$namePart->getName()} =   $namePart->render($name);
-            }
-            $name->suffix = '';
-            $name->{'non-dropping-particle'} = '';
-            $name->{'dropping-particle'} = '';
-        }
-
-        $return = $this->getNamesString($name, $rank);
-
-        return trim($return);
+        $renderedResult = $this->getNamesString($nameObj, $rank);
+        CiteProcHelper::applyAdditionMarkupFunction($nameItem, $this->parent->getVariables()[0], $renderedResult);
+        return trim($renderedResult);
     }
 
     /**
-     * @param $name
+     * @param \stdClass $name
+     * @param int $rank
      * @return string
      */
     private function getNamesString($name, $rank)
     {
         $text = "";
-        $nonDroppingParticle = isset($name->{'non-dropping-particle'}) ? $name->{'non-dropping-particle'} : "";
-        $droppingParticle = isset($name->{'dropping-particle'}) ? $name->{'dropping-particle'} : "";
-        $suffix = (isset($name->{'suffix'})) ? ' ' . $name->{'suffix'} : '';
-        if (!empty($name->given)) {
-            $name->given = $this->format(trim($name->given));
+
+        if (!isset($name->family)) {
+            return $text;
         }
+
+        $text = $this->nameOrder($name, $rank);
+
+        //contains nbsp prefixed by normal space or followed by normal space?
+        $text = htmlentities($text);
+        if (strpos($text, " &nbsp;") !== false || strpos($text, "&nbsp; ") !== false) {
+
+            $text = preg_replace("/[\s]+/", "", $text); //remove normal spaces
+            return preg_replace("/&nbsp;+/", " ", $text);
+        }
+        $text = html_entity_decode(preg_replace("/[\s]+/", " ", $text));
+        return $this->format(trim($text));
+    }
+
+    /**
+     * @param \stdClass $name
+     * @return \stdClass
+     */
+    private function cloneNamePOSC($name)
+    {
+        $nameObj = new \stdClass();
         if (isset($name->family)) {
-            $name->family = $this->format($name->family);
-            if ($this->form == 'short') {
-                $text = (!empty($nonDroppingParticle) ? $nonDroppingParticle . " " : "") . $name->family;
-            } else {
-                switch ($this->nameAsSortOrder) {
-                    /*
-                        use form "[non-dropping particel] family name,
-                        given name [dropping particle], [suffix]"
-                     */
-                    case 'all':
-                    case 'first':
-                        if ($this->nameAsSortOrder === "first" && $rank !== 0) {
-                            break;
-                        }
-                        $text =
-                            (!empty($nonDroppingParticle) ? $nonDroppingParticle . " " : "") .
-                            (trim($name->family) . $this->sortSeparator . trim($name->given)) .
-                            (!empty($droppingParticle) ? " " . $droppingParticle : "") .
-                            (!empty($suffix) ? $this->sortSeparator . trim($suffix) : "");
-                        break;
-                    /*
-                       use form "given name [dropping particles] [non-dropping particles] family name [suffix]"
-                       e.g. [Jean] [de] [La] [Fontaine] [III]
-                    */
-                    default:
-                        $text = trim($name->given) .
-                            (!empty($droppingParticle) ? " " . trim($droppingParticle) : "") .
-                            (!empty($nonDroppingParticle) ? " " . trim($nonDroppingParticle) : "") .
-                            (" " . $name->family) .
-                            (!empty($suffix) ? " " . trim($suffix) : "");
+            $nameObj->family = $name->family;
+        }
+        if (isset($name->given)) {
+            $nameObj->given = $name->given;
+        }
+        if (isset($name->{'non-dropping-particle'})) {
+            $nameObj->{'non-dropping-particle'} = $name->{'non-dropping-particle'};
+        }
+        if (isset($name->{'dropping-particle'})) {
+            $nameObj->{'dropping-particle'} = $name->{'dropping-particle'};
+        }
+        if (isset($name->{'suffix'})) {
+            $nameObj->{'suffix'} = $name->{'suffix'};
+        }
+        return $nameObj;
+    }
+
+    /**
+     * @param $data
+     * @param $text
+     * @param $resultNames
+     * @return string
+     */
+    protected function appendEtAl($data, $text, $resultNames)
+    {
+        //append et al abbreviation
+        if (count($data) > 1 &&
+            !empty($resultNames) &&
+            !empty($this->etAl) &&
+            !empty($this->etAlMin) &&
+            !empty($this->etAlUseFirst)
+        ) {
+
+
+            /* By default, when a name list is truncated to a single name, the name and the “et-al” (or “and others”)
+            term are separated by a space (e.g. “Doe et al.”). When a name list is truncated to two or more names, the
+            name delimiter is used (e.g. “Doe, Smith, et al.”). This behavior can be changed with the
+            delimiter-precedes-et-al attribute. */
+
+            switch ($this->delimiterPrecedesEtAl) {
+                case 'never':
+                    $text = $text . " " . $this->etAl;
+                    break;
+                case 'always':
+                    $text = $text . $this->delimiter . $this->etAl;
+                    break;
+                case 'contextual':
+                default:
+                    if (count($resultNames) === 1) {
+                        $text .= " " . $this->etAl;
+                    } else {
+                        $text .= $this->delimiter . $this->etAl;
+                    }
+            }
+        }
+        return $text;
+    }
+
+    /**
+     * @param $resultNames
+     * @return array
+     */
+    protected function prepareAbbreviation($resultNames)
+    {
+        $cnt = count($resultNames);
+        /* Use of et-al-min and et-al-user-first enables et-al abbreviation. If the number of names in a name variable
+        matches or exceeds the number set on et-al-min, the rendered name list is truncated after reaching the number of
+        names set on et-al-use-first.  */
+
+        if (isset($this->etAlMin) && isset($this->etAlUseFirst)) {
+
+            if ($this->etAlMin <= $cnt) {
+                if ($this->etAlUseLast && $this->etAlMin - $this->etAlUseFirst >= 2) {
+                    /* et-al-use-last: When set to “true” (the default is “false”), name lists truncated by et-al
+                    abbreviation are followed by the name delimiter, the ellipsis character, and the last name of the
+                    original name list. This is only possible when the original name list has at least two more names
+                    than the truncated name list (for this the value of et-al-use-first/et-al-subsequent-min must be at
+                    least 2 less than the value of et-al-min/et-al-subsequent-use-first).*/
+
+                    $lastName = array_pop($resultNames); //remove last Element and remember in $lastName
+
+                }
+                for ($i = $this->etAlUseFirst; $i < $cnt; ++$i) {
+                    unset($resultNames[$i]);
+                }
+
+                $resultNames = array_values($resultNames);
+
+                if (!empty($lastName)) { // append $lastName if exist
+                    $resultNames[] = $lastName;
+                }
+
+                if ($this->parent->hasEtAl()) {
+                    $this->etAl = $this->parent->getEtAl()->render(null);
+                    return $resultNames;
+                } else {
+                    $this->etAl = CiteProc::getContext()->getLocale()->filter('terms', 'et-al')->single;
+                    return $resultNames;
                 }
             }
+            return $resultNames;
+        }
+        return $resultNames;
+    }
+
+    /**
+     * @param $data
+     * @param \stdClass $preceding
+     * @return array
+     */
+    protected function renderSubsequentSubstitution($data, $preceding)
+    {
+        $resultNames = [];
+        $subsequentSubstitution = CiteProc::getContext()->getCitationItems()->getSubsequentAuthorSubstitute();
+        $subsequentSubstitutionRule = CiteProc::getContext()->getCitationItems()->getSubsequentAuthorSubstituteRule();
+
+        /**
+         * @var string $type
+         * @var \stdClass $name
+         */
+        foreach ($data as $rank => $name) {
+
+            switch ($subsequentSubstitutionRule) {
+
+                /* “partial-each” - when one or more rendered names in the name variable match those in the preceding
+                bibliographic entry, the value of subsequent-author-substitute substitutes for each matching name.
+                Matching starts with the first name, and continues up to the first mismatch. */
+                case SubsequentAuthorSubstituteRule::PARTIAL_EACH:
+
+                    if (NameHelper::precedingHasAuthor($preceding, $name)) {
+                        $resultNames[] = $subsequentSubstitution;
+                    } else {
+                        $resultNames[] = $this->formatName($name, $rank);
+                    }
+                    break;
+
+
+                /* “partial-first” - as “partial-each”, but substitution is limited to the first name of the name
+                variable. */
+                case SubsequentAuthorSubstituteRule::PARTIAL_FIRST:
+
+                    if ($rank === 0) {
+                        if ($preceding->author[0]->family === $name->family) {
+                            $resultNames[] = $subsequentSubstitution;
+                        } else {
+                            $resultNames[] = $this->formatName($name, $rank);
+                        }
+                    } else {
+                        $resultNames[] = $this->formatName($name, $rank);
+                    }
+                    break;
+
+                /* “complete-each” - requires a complete match like “complete-all”, but now the value of
+                subsequent-author-substitute substitutes for each rendered name. */
+                case SubsequentAuthorSubstituteRule::COMPLETE_EACH:
+                    if (NameHelper::identicalAuthors($preceding, $data)) {
+                        $resultNames[] = $subsequentSubstitution;
+                    } else {
+                        $resultNames[] = $this->formatName($name, $rank);
+                    }
+                    break;
+            }
+        }
+        return $resultNames;
+    }
+
+    /**
+     * @param array $data
+     * @param int $citationNumber
+     * @return array
+     */
+    private function handleSubsequentAuthorSubstitution($data, $citationNumber)
+    {
+        $hasPreceding = CiteProc::getContext()->getCitationItems()->hasKey($citationNumber - 1);
+        $subsequentSubstitution = CiteProc::getContext()->getCitationItems()->getSubsequentAuthorSubstitute();
+        $subsequentSubstitutionRule = CiteProc::getContext()->getCitationItems()->getSubsequentAuthorSubstituteRule();
+        $preceding = CiteProc::getContext()->getCitationItems()->get($citationNumber - 1);
+
+
+        if ($hasPreceding && !is_null($subsequentSubstitution) && !empty($subsequentSubstitutionRule)) {
+            /** @var \stdClass $preceding */
+            $identicalAuthors = NameHelper::identicalAuthors($preceding, $data);
+            if ($subsequentSubstitutionRule == SubsequentAuthorSubstituteRule::COMPLETE_ALL) {
+                if ($identicalAuthors) {
+                    return [];
+                } else {
+                    $resultNames = $this->getFormattedNames($data);
+                }
+            } else {
+                $resultNames = $this->renderSubsequentSubstitution($data, $preceding);
+            }
+        } else {
+            $resultNames = $this->getFormattedNames($data);
+        }
+        return $resultNames;
+    }
+
+
+    /**
+     * @param array $data
+     * @return array
+     */
+    protected function getFormattedNames($data)
+    {
+        $resultNames = [];
+        foreach ($data as $rank => $name) {
+            $formatted = $this->formatName($name, $rank);
+            $resultNames[] = NameHelper::addExtendedMarkup($this->variable, $name, $formatted);
+        }
+        return $resultNames;
+    }
+
+    /**
+     * @param $resultNames
+     * @return array
+     */
+    protected function renderDelimiterPrecedesLastNever($resultNames)
+    {
+        $text = "";
+        if (!$this->etAlUseLast) {
+            if (count($resultNames) === 1) {
+                $text = $resultNames[0];
+            } else if (count($resultNames) === 2) {
+                $text = implode(" ", $resultNames);
+            } else { // >2
+                $lastName = array_pop($resultNames);
+                $text = implode($this->delimiter, $resultNames) . " " . $lastName;
+            }
+        }
+        return $text;
+    }
+
+    /**
+     * @param $resultNames
+     * @return string
+     */
+    protected function renderDelimiterPrecedesLastContextual($resultNames)
+    {
+        if (count($resultNames) === 1) {
+            $text = $resultNames[0];
+        } else if (count($resultNames) === 2) {
+            $text = implode(" ", $resultNames);
+        } else {
+            $text = implode($this->delimiter, $resultNames);
+        }
+        return $text;
+    }
+
+    /**
+     * @param $resultNames
+     */
+    protected function addAnd(&$resultNames)
+    {
+        $count = count($resultNames);
+        if (!empty($this->and) && $count > 1 && empty($this->etAl)) {
+            $new = $this->and . ' ' . end($resultNames); // add and-prefix of the last name if "and" is defined
+            $resultNames[count($resultNames) - 1] = $new; //set prefixed last name at the last position of $resultNames array
+        }
+    }
+
+    /**
+     * @param $resultNames
+     * @return array|string
+     */
+    protected function renderDelimiterPrecedesLast($resultNames)
+    {
+        $text = "";
+        if (!empty($this->and) && empty($this->etAl)) {
+            switch ($this->delimiterPrecedesLast) {
+                case 'after-inverted-name':
+                    //TODO: implement
+                    break;
+                case 'always':
+                    $text = implode($this->delimiter, $resultNames);
+                    break;
+                case 'never':
+                    $text = $this->renderDelimiterPrecedesLastNever($resultNames);
+                    break;
+                case 'contextual':
+                default:
+                    $text = $this->renderDelimiterPrecedesLastContextual($resultNames);
+            }
+        }
+        return $text;
+    }
+
+
+    /**
+     * @param \stdClass $data
+     * @param integer $rank
+     *
+     * @return string
+     */
+    private function nameOrder($data, $rank)
+    {
+        $nameAsSortOrder = (($this->nameAsSortOrder === "first" && $rank === 0) || $this->nameAsSortOrder === "all");
+        $demoteNonDroppingParticle = CiteProc::getContext()->getGlobalOptions()->getDemoteNonDroppingParticles();
+
+        if (StringHelper::isLatinString(NameHelper::normalizeName($data)) || StringHelper::isCyrillicString(NameHelper::normalizeName($data))) {
+            if ($this->form === "long" && $nameAsSortOrder &&
+                ((string)$demoteNonDroppingParticle === DemoteNonDroppingParticle::NEVER ||
+                    (string)$demoteNonDroppingParticle === DemoteNonDroppingParticle::SORT_ONLY)
+            ) {
+
+                // [La] [Fontaine], [Jean] [de], [III]
+                NameHelper::prependParticleTo($data, "family", "non-dropping-particle");
+                NameHelper::appendParticleTo($data, "given", "dropping-particle");
+
+                list($family, $given) = $this->renderNameParts($data);
+
+                $text = $family . (!empty($given) ? $this->sortSeparator . $given : "");
+                $text .= !empty($data->suffix) ? $this->sortSeparator . $data->suffix : "";
+            } else if ($this->form === "long" && $nameAsSortOrder &&
+                (is_null($demoteNonDroppingParticle) ||
+                    (string)$demoteNonDroppingParticle === DemoteNonDroppingParticle::DISPLAY_AND_SORT)
+            ) {
+                // [Fontaine], [Jean] [de] [La], [III]
+
+                NameHelper::appendParticleTo($data, "given", "dropping-particle");
+                NameHelper::appendParticleTo($data, "given", "non-dropping-particle");
+                list($family, $given) = $this->renderNameParts($data);
+                $text = $family;
+                $text .= !empty($given) ? $this->sortSeparator . $given : "";
+                $text .= !empty($data->suffix) ? $this->sortSeparator . $data->suffix : "";
+
+            } else if ($this->form === "long" && $nameAsSortOrder && empty($demoteNonDroppingParticle)) {
+                list($family, $given) = $this->renderNameParts($data);
+                $text = $family;
+                $text .= !empty($given) ? $this->delimiter . $given : "";
+                $text .= !empty($data->suffix) ? $this->sortSeparator . $data->suffix : "";
+            } else if ($this->form === "short") {
+                // [La] [Fontaine]
+                NameHelper::prependParticleTo($data, "family", "non-dropping-particle");
+                $text = $data->family;
+            } else { //form "long" (default)
+
+                // [Jean] [de] [La] [Fontaine] [III]
+                NameHelper::prependParticleTo($data, "family", "non-dropping-particle");
+                NameHelper::prependParticleTo($data, "family", "dropping-particle");
+                NameHelper::appendParticleTo($data, "family", "suffix");
+                list($family, $given) = $this->renderNameParts($data);
+                $text = !empty($given) ? $given . " " . $family : $family;
+            }
+        } else {
+            $text = $this->form === "long" ? $data->family.$data->given : $data->family;
         }
 
         return $text;
     }
 
-    public function getOptions()
+    /**
+     * @param $data
+     * @return array
+     */
+    private function renderNameParts($data)
     {
-        $ignore = ["namePart", "parent", "substitute"];
-        $options = [];
-        $reflectedName = new \ReflectionClass($this);
-
-        foreach ($reflectedName->getProperties() as $property) {
-            $property->setAccessible(true);
-            if (in_array($property->getName(), $ignore)) {
-                continue;
-            } else if ($property->getName() == "and" && $property->getValue($this) === "&") {
-                $options["and"] = "symbol";
-            } else {
-                $propValue = $property->getValue($this);
-                if (isset($propValue) && !empty($propValue)) {
-                    $options[StringHelper::camelCase2Hyphen($property->getName())] = $propValue;
-                }
-            }
+        $given = "";
+        $family = array_key_exists("family", $this->nameParts) ? $this->nameParts["family"]->render($data) : $data->family;
+        if (isset($data->given)) {
+            $given = array_key_exists("given", $this->nameParts) ? $this->nameParts["given"]->render($data) : $data->given;
         }
-        return $options;
+        return [$family, $given];
+    }
+
+
+    /**
+     * @return string
+     */
+    public function getForm()
+    {
+        return $this->form;
+    }
+
+    /**
+     * @return string
+     */
+    public function isNameAsSortOrder()
+    {
+        return $this->nameAsSortOrder;
+    }
+
+    /**
+     * @return string
+     */
+    public function getDelimiter()
+    {
+        return $this->delimiter;
+    }
+
+    /**
+     * @param mixed $delimiter
+     */
+    public function setDelimiter($delimiter)
+    {
+        $this->delimiter = $delimiter;
+    }
+
+    /**
+     * @return Names
+     */
+    public function getParent()
+    {
+        return $this->parent;
     }
 
 }

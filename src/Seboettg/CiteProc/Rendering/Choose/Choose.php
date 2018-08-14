@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -8,7 +8,10 @@
  */
 
 namespace Seboettg\CiteProc\Rendering\Choose;
-use Seboettg\CiteProc\Rendering\RenderingInterface;
+use Seboettg\CiteProc\Rendering\HasParent;
+use Seboettg\CiteProc\Rendering\Rendering;
+use Seboettg\CiteProc\Rendering\Text;
+use Seboettg\CiteProc\Style\Macro;
 use Seboettg\Collection\ArrayList;
 
 
@@ -18,45 +21,85 @@ use Seboettg\Collection\ArrayList;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class Choose implements RenderingInterface
+class Choose implements Rendering, HasParent
 {
 
+    /**
+     * @var ArrayList
+     */
     private $children;
 
+    private $parent;
 
-    public  function __construct(\SimpleXMLElement $node)
+    /**
+     * Choose constructor.
+     * @param \SimpleXMLElement $node
+     * @param $parent
+     */
+    public  function __construct(\SimpleXMLElement $node, $parent)
     {
+        $this->parent = $parent;
         $this->children = new ArrayList();
-
+        $elseIf = [];
         foreach ($node->children() as $child) {
             switch ($child->getName()) {
                 case 'if':
-                    $this->children->add("if", new ChooseIf($child));
+                    $this->children->add("if", new ChooseIf($child, $this));
                     break;
                 case 'else-if':
-                    $this->children->add("elseif", new ChooseIf($child));
+                    $elseIf[] = new ChooseElseIf($child, $this);
                     break;
                 case 'else':
-                    $this->children->add("else", new ChooseElse($child));
+                    $this->children->add("else", new ChooseElse($child, $this));
                     break;
             }
+        }
+        if (!empty($elseIf)) {
+            $this->children->add("elseif", $elseIf);
         }
     }
 
-    public function render($data)
+    /**
+     * @param array|\Seboettg\CiteProc\Data\DataList $data
+     * @param null|int $citationNumber
+     * @return string
+     */
+    public function render($data, $citationNumber = null)
     {
         $arr = [];
-        if ($this->children->get("if")->match($data)) {
+
+        // IF
+        if ($prevCondition = $this->children->get("if")->match($data)) {
             $arr[] = $this->children->get("if")->render($data);
-        } else if ($this->children->hasKey("elseif") && is_object($this->children->get("elseif")) && $this->children->get("elseif")->match($data)) {
-            $arr[] = $this->children->get("elseif")->render($data);
-        } else {
-            if ($this->children->hasKey("else")) {
-                $arr[] = $this->children->get("else")->render($data);
+
+        } else if (!$prevCondition && $this->children->hasKey("elseif")) { // ELSEIF
+            /** @var ChooseElseIf $child */
+            foreach ($this->children->get("elseif") as $child) {
+                $condition = $child->match($data);
+                if ($condition && !$prevCondition) {
+                    $arr[] = $child->render($data);
+                    $prevCondition = true;
+                    break; //break loop as soon as condition matches
+                }
+                $prevCondition = $condition;
             }
         }
 
+        //ELSE
+        if (!$prevCondition && $this->children->hasKey("else")) {
+            $arr[] = $this->children->get("else")->render($data);
+
+        }
         return implode("", $arr);
+    }
+
+
+    /**
+     * @return mixed
+     */
+    public function getParent()
+    {
+        return $this->parent;
     }
 }
 

@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -9,12 +9,17 @@
 
 namespace Seboettg\CiteProc\Rendering\Name;
 
+use Seboettg\CiteProc\CiteProc;
+use Seboettg\CiteProc\Rendering\HasParent;
 use Seboettg\CiteProc\Rendering\Label;
-use Seboettg\CiteProc\Rendering\RenderingInterface;
+use Seboettg\CiteProc\Rendering\Rendering;
+use Seboettg\CiteProc\RenderingState;
+use Seboettg\CiteProc\Style\InheritableNameAttributesTrait;
 use Seboettg\CiteProc\Styles\AffixesTrait;
 use Seboettg\CiteProc\Styles\DelimiterTrait;
 use Seboettg\CiteProc\Styles\FormattingTrait;
 use Seboettg\CiteProc\Util\Factory;
+use Seboettg\CiteProc\Util\NameHelper;
 use Seboettg\Collection\ArrayList;
 
 
@@ -24,11 +29,12 @@ use Seboettg\Collection\ArrayList;
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
-class Names implements RenderingInterface
+class Names implements Rendering, HasParent
 {
-    use DelimiterTrait;
-    use AffixesTrait;
-    use FormattingTrait;
+    use DelimiterTrait,
+        AffixesTrait,
+        FormattingTrait,
+        InheritableNameAttributesTrait;
 
     /**
      * Variables (selected with the required variable attribute), each of which can contain multiple names (e.g. the
@@ -98,13 +104,16 @@ class Names implements RenderingInterface
      */
     private $delimiter = ", ";
 
+    private $parent;
+
     /**
      * Names constructor.
      * @param \SimpleXMLElement $node
      */
-    public function __construct(\SimpleXMLElement $node)
+    public function __construct(\SimpleXMLElement $node, $parent)
     {
-
+        $this->initInheritableNameAttributes($node);
+        $this->parent = $parent;
         /** @var \SimpleXMLElement $child */
         foreach ($node->children() as $child) {
 
@@ -116,7 +125,7 @@ class Names implements RenderingInterface
                     $this->label = Factory::create($child);
                     break;
                 case "substitute":
-                    $this->substitute = Factory::create($child);
+                    $this->substitute = new Substitute($child, $this);
                     break;
                 case "et-al":
                     $this->etAl = Factory::create($child);
@@ -145,32 +154,33 @@ class Names implements RenderingInterface
      * addition, the “editortranslator” term is used if the Names element contains a Label element, replacing the
      * default “editor” and “translator” terms (e.g. resulting in “Doe (editor & translator)”).
      *
-     * @param $data
+     * @param \stdClass $data
+     * @param int|null $citationNumber
      * @return string
      */
-    public function render($data)
+    public function render($data, $citationNumber = null)
     {
         $str = "";
-        $matches = [];
 
         /* when the selection consists of “editor” and “translator”, and when the contents of these two name variables
         is identical, then the contents of only one name variable is rendered. In addition, the “editortranslator”
         term is used if the cs:names element contains a cs:label element, replacing the default “editor” and
         “translator” terms (e.g. resulting in “Doe (editor & translator)”) */
         if ($this->variables->hasValue("editor") && $this->variables->hasValue("translator")) {
-            if (isset($data->editor) && isset($data->translator)) {
-                if (isset($name)) {
-                    $str .= $this->name->render($data->editor);
+            if (isset($data->editor) && isset($data->translator) && NameHelper::sameNames($data->editor, $data->translator)) {
+                if (isset($this->name)) {
+                    $str .= $this->name->render($data, 'editor');
                 } else {
                     $arr = [];
                     foreach ($data->editor as $editor) {
-                        $arr[] = $this->format($editor->family . ", " . $editor->given);
+                        $edt = $this->format($editor->family . ", " . $editor->given);
+                        $results[] = NameHelper::addExtendedMarkup('editor', $editor, $edt);
                     }
                     $str .= implode($this->delimiter, $arr);
                 }
                 if (isset($this->label)) {
                     $this->label->setVariable("editortranslator");
-                    $str .= $this->label->render("");
+                    $str .= $this->label->render($data);
                 }
                 $vars = $this->variables->toArray();
                 $vars = array_filter($vars, function($value) {
@@ -180,53 +190,176 @@ class Names implements RenderingInterface
             }
         }
 
-        foreach ($this->variables as $variable) {
-            if (isset($data->{$variable}) && (!empty($data->{$variable}))) {
-                $matches[] = $variable;
-            }
-        }
-
-
-
         $results = [];
-        foreach ($matches as $var) {
+        foreach ($this->variables as $var) {
 
             if (!empty($data->{$var})) {
                 if (!empty($this->name)) {
-                    $name = $this->name->render($data->{$var});
+                    $res = $this->name->render($data, $var, $citationNumber);
+                    $name = $res;
                     if (!empty($this->label)) {
-                        $this->label->setVariable($var);
-                        $name .= $this->label->render($data);
+                        $name = $this->appendLabel($data, $var, $name);
                     }
-                    $results[] = $this->format($name);
+                    //add multiple counting values
+                    if (is_numeric($name) && $this->name->getForm() === "count") {
+                        $results = $this->addCountValues($res, $results);
+                    } else {
+                        $results[] = $this->format($name);
+                    }
                 } else {
                     foreach ($data->{$var} as $name) {
-                        $results[] = $name->given . " " . $name->family;
+                        $formatted = $this->format($name->given . " " . $name->family);
+                        $results[] = NameHelper::addExtendedMarkup($var, $name, $formatted);
                     }
+                }
+                // suppress substituted variables
+                if (CiteProc::getContext()->getRenderingState()->getValue() === RenderingState::SUBSTITUTION) {
+                    unset($data->{$var});
+                }
+            } else {
+                if (!empty($this->substitute)) {
+                    $results[] = $this->substitute->render($data);
                 }
             }
         }
         $str .= implode($this->delimiter, $results);
-        return $this->addAffixes($str);
+        return !empty($str) ? $this->addAffixes($str) : "";
     }
 
+
+    /**
+     * @param $data
+     * @param $var
+     * @param $name
+     * @return string
+     */
+    private function appendLabel($data, $var, $name)
+    {
+        $this->label->setVariable($var);
+        if (in_array($this->label->getForm(), ["verb", "verb-short"])) {
+            $name = $this->label->render($data) . $name;
+        } else {
+            $name .= $this->label->render($data);
+        }
+        return $name;
+    }
+
+    /**
+     * @param $res
+     * @param $results
+     * @return array
+     */
+    private function addCountValues($res, $results)
+    {
+        $lastElement = current($results);
+        $key = key($results);
+        if (!empty($lastElement)) {
+            $lastElement += $res;
+            $results[$key] = $lastElement;
+        } else {
+            $results[] = $res;
+        }
+        return $results;
+    }
+
+    /**
+     * @return bool
+     */
     public function hasEtAl()
     {
         return !empty($this->etAl);
     }
 
+    /**
+     * @return EtAl
+     */
     public function getEtAl()
     {
         return $this->etAl;
     }
 
+    /**
+     * @param EtAl $etAl
+     * @return $this
+     */
+    public function setEtAl(EtAl $etAl)
+    {
+        $this->etAl = $etAl;
+        return $this;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasName()
+    {
+        return !empty($this->name);
+    }
+
+    /**
+     * @return Name
+     */
+    public function getName()
+    {
+        return $this->name;
+    }
+
+    /**
+     * @param Name $name
+     * @return $this
+     */
+    public function setName(Name $name)
+    {
+        $this->name = $name;
+        return $this;
+    }
+
+    /**
+     * @return string
+     */
     public function getDelimiter()
     {
         return $this->delimiter;
     }
 
+    /**
+     * @return ArrayList
+     */
     public function getVariables()
     {
         return $this->variables;
     }
+
+    /**
+     * @return bool
+     */
+    public function hasLabel()
+    {
+        return !empty($this->label);
+    }
+
+    /**
+     * @return Label
+     */
+    public function getLabel()
+    {
+        return $this->label;
+    }
+
+    /**
+     * @param Label $label
+     */
+    public function setLabel($label)
+    {
+        $this->label = $label;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getParent()
+    {
+        return $this->parent;
+    }
+
 }

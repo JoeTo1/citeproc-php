@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -8,9 +8,11 @@
  */
 
 namespace Seboettg\CiteProc\Style;
-use Seboettg\CiteProc\Rendering\Layout;
-use Seboettg\CiteProc\Rendering\RenderingInterface;
-use Seboettg\CiteProc\Util\Factory;
+
+use Seboettg\CiteProc\CiteProc;
+use Seboettg\CiteProc\Data\DataList;
+use Seboettg\CiteProc\Style\Options\CitationOptions;
+use Seboettg\Collection\ArrayList;
 
 
 /**
@@ -27,12 +29,32 @@ use Seboettg\CiteProc\Util\Factory;
  */
 class Citation extends StyleElement
 {
+
+    private $node;
+
     /**
      * Citation constructor.
      * @param \SimpleXMLElement $node
      */
-    public function __construct(\SimpleXMLElement $node)
+    public function __construct(\SimpleXMLElement $node, $parent)
     {
-        parent::__construct($node);
+        parent::__construct($node, $parent);
+        $citationOptions = new CitationOptions($node);
+        CiteProc::getContext()->setCitationSpecificOptions($citationOptions);
+        $this->node = $node;
     }
+
+    /**
+     * @param array|DataList $data
+     * @param ArrayList $citationItems
+     * @return string
+     */
+    public function render($data, $citationItems)
+    {
+        if (!$this->attributesInitialized) {
+            $this->initInheritableNameAttributes($this->node);
+        }
+        return $this->layout->render($data, $citationItems);
+    }
+
 }

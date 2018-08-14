@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -19,22 +19,34 @@ namespace Seboettg\CiteProc\Constraint;
 class Type implements ConstraintInterface
 {
 
+    /**
+     * @var array
+     */
     private $typeValue;
 
-    public function __construct($value, $match)
+    /**
+     * @var string
+     */
+    private $match;
+
+    /**
+     * Type constructor.
+     * @param string $value
+     * @param $match
+     */
+    public function __construct($value, $match = "any")
     {
-        $this->typeValue = $value;
+        $this->typeValue = explode(" ", $value);
+        $this->match = $match;
     }
 
     /**
-     * @param \stdClass $value
+     * @param $value
+     * @param int|null $citationNumber
      * @return bool
      */
-    public function validate($value)
+    public function validate($value, $citationNumber = null)
     {
-        if (isset($value->type)) {
-            return ($value->type == $this->typeValue);
-        }
-        return false;
+        return in_array($value->type, $this->typeValue);
     }
 }

@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -11,12 +11,17 @@ namespace Seboettg\CiteProc\Constraint;
 
 
 /**
- * Class ConstraintInterface
+ * Interface ConstraintInterface
  * @package Seboettg\CiteProc\Choose\Constraint
  *
  * @author Sebastian Böttger <seboettg@gmail.com>
  */
 interface ConstraintInterface
 {
-    public function validate($value);
+    /**
+     * @param $value
+     * @param null $citationNumber
+     * @return bool
+     */
+    public function validate($value, $citationNumber = null);
 }

@@ -5,29 +5,40 @@
     "authors": [
         {
             "name": "Sebastian Böttger",
-            "email": "seboettg@gmail.com"
+            "email": "seboettg@gmail.com",
+            "homepage": "http://sebastianboettger.net",
+            "role": "Developer"
         }
     ],
+    "support": {
+        "issues": "https://github.com/seboettg/citeproc-php/issues"
+    },
     "autoload": {
         "psr-4": {"": "src/"}
     },
     "require": {
-        "seboettg/collection": "^1.1"
+        "seboettg/collection": "^1.2",
+        "myclabs/php-enum": "^1.5",
+        "symfony/polyfill-mbstring": "^1.3"
     },
     "require-dev": {
-        "satooshi/php-coveralls": "^1"
+        "satooshi/php-coveralls": "^1",
+        "phpunit/phpunit": "6.0.13"
     },
-    "version": "2.0.0-dev",
-    "extra": {
-        "branch-alias": {
-            "version2.0": "2.0.x-dev"
-        }
-    },
+
     "scripts": {
         "post-install-cmd": [
-            "git submodule update --init",
-            "cd ./tests/fixtures/test-suite/; ./processor.py -g"
-        ]
+            "./install.sh styles-distribution",
+            "./install.sh locales",
+            "cd ./tests/fixtures/basic-tests/; ./processor.py -g",
+            "chmod +x vendor/bin/phpunit"
+        ],
+        "post-update-cmd": [
+            "./install.sh styles-distribution",
+            "./install.sh locales",
+            "cd ./tests/fixtures/basic-tests/; ./processor.py -g",
+            "chmod +x vendor/bin/phpunit"
+        ],
+        "test": "vendor/bin/phpunit"
     }
 }
-

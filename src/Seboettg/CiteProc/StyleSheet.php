@@ -1,5 +1,5 @@
 <?php
-/**
+/*
  * citeproc-php
  *
  * @link        http://github.com/seboettg/citeproc-php for the source repository
@@ -8,6 +8,8 @@
  */
 
 namespace Seboettg\CiteProc;
+
+use Seboettg\CiteProc\Exception\CiteProcException;
 
 /**
  * Class StyleSheet
@@ -28,10 +30,11 @@ class StyleSheet
      *
      * @param string $styleName e.g. "american-physiological-society" for apa
      * @return string
+     * @throws CiteProcException
      */
     public static function loadStyleSheet($styleName)
     {
-        $stylesPath = __DIR__ . '/../../../styles/';
+        $stylesPath = self::vendorPath() . "/citation-style-language/styles-distribution/";
         return file_get_contents($stylesPath . $styleName . '.csl');
     }
 
@@ -40,10 +43,42 @@ class StyleSheet
      *
      * @param string $langKey e.g. "en-US", or "de-CH"
      * @return string
+     * @throws CiteProcException
      */
     public static function loadLocales($langKey)
     {
-        $localesPath = __DIR__ . '/../../../locales/';
-        return file_get_contents($localesPath . "locales-" . $langKey . '.xml');
+        $localesPath = self::vendorPath() . "/citation-style-language/locales/";
+        $localeFile = $localesPath . "locales-" . $langKey . '.xml';
+        if (file_exists($localeFile)) {
+            $data = file_get_contents($localeFile);
+        } else {
+            $metadata = self::loadLocalesMetadata();
+            if (!empty($metadata->{'primary-dialects'}->{$langKey})) {
+                $data = file_get_contents($localesPath . "locales-" . $metadata->{'primary-dialects'}->{$langKey} . '.xml');
+            }
+        }
+
+        return $data;
+    }
+
+    public static function loadLocalesMetadata()
+    {
+        $localesMetadataPath = self::vendorPath() . "/citation-style-language/locales/locales.json";
+        return json_decode(file_get_contents($localesMetadataPath));
+    }
+
+    /**
+     * @return bool|string
+     * @throws CiteProcException
+     */
+    private static function vendorPath()
+    {
+        include_once __DIR__ . '/../../../vendorPath.php';
+        if (!($vendorPath = vendorPath())) {
+            // @codeCoverageIgnoreStart
+            throw new CiteProcException('vendor path not found. Use composer to initialize your project');
+            // @codeCoverageIgnoreEnd
+        }
+        return $vendorPath;
     }
 }
